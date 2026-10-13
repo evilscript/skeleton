@@ -29,6 +29,9 @@
 //   board brief 12 [--dir d] [--json]        the whole card in one folder: brief.md (description, every comment in full) and its screenshots and files downloaded
 //   board agents                             the names that can be assigned and written to (the Worker's list, src/agents.ts)
 //   board whoami                             the name the Worker knows your key by, next to BOARD_AS
+//   board owner-key [--copy]                 print the Owner's key for the board page's sign-in, or copy it to the clipboard
+//                                            (--copy). The Owner's credential: only the Owner runs it, in their own terminal;
+//                                            agents never do. It refuses to print when the output is not a terminal.
 //   board version [--json]                   the one-row change check: any card of the project changed, its newest comment number
 //   board usage [--json]                     today's UTC D1 row use, from Wrangler insights
 //
@@ -57,7 +60,8 @@
 //   BOARD_PROJECT   the project key; default board.defaultProject
 // Without those, the key for BOARD_AS is read from the macOS Keychain (service board.keychainService from the config,
 // account = the board name), then from the key file ~/.boardkit/<slug>/keys/<board name> (mode 600; <slug> is
-// project.slug, or "default" without a config).
+// project.slug, or "default" without a config). The Owner's key is stored the same way, under the account owner.boardName
+// from the config (default "owner").
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
@@ -71,6 +75,8 @@ try { SETTINGS = boardSettings(); } catch (error) { console.error("board: " + er
 const BASE = SETTINGS.url;
 const COLS = [...COLUMN_KEYS, "todo", "later"];
 const PRIORITIES = ["minor", "major", "critical", "blocker"];
+// Messages for Worker errors that the shared comment rules do not cover.
+const CLI_ERRORS = { files_disabled: "this board has no file storage (no R2 bucket is set up), so nothing can be attached or downloaded" };
 const TYPES = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif", ".txt": "text/plain", ".md": "text/markdown", ".json": "application/json", ".csv": "text/csv", ".log": "text/plain", ".zip": "application/zip", ".pdf": "application/pdf" };
 
 function die(msg) {
@@ -97,6 +103,16 @@ function keyFile(who) {
 }
 function fileKey(who) {
   try { return readFileSync(keyFile(who), "utf8").trim() || null; } catch { return null; }
+}
+// Put text on the system clipboard without printing it; the name of the tool used, or null when there is none.
+function copyToClipboard(text) {
+  const tools = process.platform === "darwin" ? [["pbcopy", []]]
+    : process.platform === "win32" ? [["clip", []]]
+    : [["wl-copy", []], ["xclip", ["-selection", "clipboard"]]];
+  for (const [tool, args] of tools) {
+    try { execFileSync(tool, args, { input: text, stdio: ["pipe", "ignore", "ignore"] }); return tool; } catch {}
+  }
+  return null;
 }
 function key() {
   const as = process.env.BOARD_AS;
@@ -137,7 +153,7 @@ async function call(method, path, body) {
       const list = await fetch(BASE + "/api/agents", { headers }).then((r) => r.json()).catch(() => null);
       if (list) hint = ` (valid: ${[...list.agents.map((a) => a.name), out.error === "invalid_to" ? "owner" : list.owner.name].join(" ")}${out.error === "invalid_assignee" ? " none" : ""})`;
     }
-    die(`${method} ${path}: ${res.status} ${COMMENT_ERRORS[out.error] || out.message || out.error || ""}${hint}`);
+    die(`${method} ${path}: ${res.status} ${COMMENT_ERRORS[out.error] || CLI_ERRORS[out.error] || out.message || out.error || ""}${hint}`);
   }
   return out;
 }
@@ -149,7 +165,7 @@ function parse(argv) {
     const a = argv[i];
     if (a.startsWith("--")) {
       const name = a.slice(2);
-      const bool = ["json", "screenshot", "removed", "peek", "all"].includes(name);
+      const bool = ["json", "screenshot", "removed", "peek", "all", "copy"].includes(name);
       const v = bool ? true : argv[++i];
       if (v === undefined) die(`--${name} needs a value`);
       if (name === "chip") (flags.chip ||= []).push(v);
@@ -452,14 +468,31 @@ switch (cmd) {
     console.log(`${me.name}${label ? " (" + label + ")" : ""}${limited}   BOARD_AS=${process.env.BOARD_AS || "-"}`);
     break;
   }
+  case "owner-key": {
+    // The Owner's key opens the board page as the Owner (full rights, including deleting for good). It is
+    // read from the Owner's own key store, never printed into a pipe or a log, and never by an agent.
+    console.error("WARNING: this is the Owner's credential. Only the Owner runs this command, in their own terminal. Agents never run it.\nDo not paste the key into a card, a chat, a file in the repository or a log.");
+    if (process.env.BOARD_AS) die("BOARD_AS is set, so this looks like an agent session. The Owner's key is read only from the Owner's own plain terminal (unset BOARD_AS there).");
+    if (!flags.copy && !process.stdout.isTTY) die("refusing to print the owner key: the output is not a terminal. Run this in your own terminal, or add --copy to put the key on the clipboard.");
+    if (flags.copy && !process.stdin.isTTY) die("refusing to copy the owner key: this is not an interactive terminal. Run it yourself in your own terminal.");
+    const name = SETTINGS.ownerBoardName;
+    const ownerKey = keychainKey(name) || fileKey(name);
+    if (!ownerKey) die(`no owner key stored for ${name}: it is made by "npm run setup:secrets" in board/ and stored on the machine that ran it (Keychain service "${SETTINGS.keychainService}", or the file ${keyFile(name)}). Run this on that machine.`);
+    if (flags.copy) {
+      if (!copyToClipboard(ownerKey)) die("no clipboard tool found (pbcopy, clip, wl-copy or xclip). Run it without --copy in your own terminal.");
+      console.error("The owner key is on the clipboard. Paste it into the board page's sign-in, then clear the clipboard.");
+    } else console.log(ownerKey);
+    break;
+  }
   case "version": {
     const out = await call("GET", scoped("/api/version"));
     console.log(flags.json ? JSON.stringify(out) : `cards ${out.v || "-"}  comments ${out.c}`);
     break;
   }
-  default:
-    // The usage is the comment at the top of this file.
+  default: {
+    // The usage is the comment at the top of this file. `board`, `board help` and `board --help` print it and succeed; an unknown command fails.
     const head = readFileSync(new URL(import.meta.url), "utf8").split("\n").slice(1);
     console.log(head.slice(0, head.findIndex((l) => !l.startsWith("//"))).map((l) => l.replace(/^\/\/ ?/, "")).join("\n"));
-    process.exit(cmd ? 1 : 0);
+    process.exit(!cmd || ["help", "--help", "-h"].includes(cmd) ? 0 : 1);
+  }
 }

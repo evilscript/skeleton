@@ -52,10 +52,10 @@ Ask in this order. Write nothing to disk yet; keep the answers in your head or i
 **E. Folders.** The project folder is the clone of the project's GitHub repository. Each member gets a folder inside it named `<Role> - <Name>` (for example `PM - Atlas`, `Dev - Bolt`, `QA - Check`), ignored by git, holding that member's checkouts and scratch files.
 10. Which absolute folder on this machine should be the project folder (default: where this repository is now, or `~/Projects/<repo name>`)? If this repository sits somewhere else, move or clone it there before step 4.
 
-**F. The board** (the source of truth for questions, tickets and to-dos)
-11. Set it up now on the Owner's own Cloudflare account (free tier is enough; recommended), or later? If later, set `board.enabled` to `false`: everything else works, the cards just have no home yet.
-12. Address: a custom domain on Cloudflare (for example `board.example.com`) or the free `<worker name>.workers.dev` address.
-13. Does the Owner want to sign in to the board page with Google (needs a Google OAuth client the Owner creates; you only need its public client id) and a public feedback form protected by Cloudflare Turnstile (needs a widget; you only need its public site key)? Both are optional at first; the command line works without them.
+**F. The board** (the source of truth for questions, tickets and to-dos; read `docs/BOARD_HOSTING.md` first so you can answer follow-up questions)
+11. Set it up now on the Owner's own Cloudflare account (free; an email address is enough to create one), or later? If later, set `board.enabled` to `false`: everything else works, the cards just have no home yet.
+12. Does the Owner have a domain whose DNS is on Cloudflare? Default: no. Then the board lives on the free address `https://<worker name>.<subdomain>.workers.dev`: no domain is needed. The Owner picks the `<subdomain>` once in the Cloudflare dashboard (Workers & Pages, "Your subdomain") and tells you the name, so the address is known before the first deploy.
+13. Optional extras, all off by default: card attachments and screenshots (needs a Cloudflare R2 bucket, and Cloudflare asks for a payment card before R2 can be switched on); a public feedback form protected by Cloudflare Turnstile (needs a widget; you only need its public site key); deploying the board from GitHub on every push (needs an API token the Owner puts into the repository secrets). Ask for each in one line and accept "no".
 
 **G. How work is checked**
 14. How do you run the project's tests (a command), or "none yet"? Is there a quicker subset for a single change (the minimum scope) and a full suite for a release? Anything that must never be merged without a green run?
@@ -69,7 +69,7 @@ When you have the answers, show **one summary table** and ask the Owner to confi
 
 ## 4. Write the config and apply it
 
-1. Copy the shape of `skeleton.config.example.json` into `skeleton.config.json` and fill it with the confirmed answers. Fields you do not know yet stay empty strings (`d1Id`, `cloudflareAccountId`, `googleClientId`, `turnstileSiteKey`). `board.defaultProject` stays `main`. For the board names use `workerName`, `d1Name`, `r2Bucket` and `keychainService` derived from the slug (`<slug>-board`, `<slug>-board-files`).
+1. Copy the shape of `skeleton.config.example.json` into `skeleton.config.json` and fill it with the confirmed answers. Fields you do not know yet stay empty strings (`d1Id`, `cloudflareAccountId`, `turnstileSiteKey`). `board.url` is the workers.dev address from question 12 (or the custom domain). `board.r2Bucket` stays an empty string unless the Owner wants attachments (then `<slug>-board-files`). `board.defaultProject` stays `main`. For the board names use `workerName`, `d1Name` and `keychainService` derived from the slug (`<slug>-board`).
 2. `node tools/setup/apply.mjs --check` (validates the config), then `node tools/setup/apply.mjs --dry-run`, then `node tools/setup/apply.mjs`.
    It replaces the `{{TOKENS}}` in the documents, writes `docs/TEAM.md`, `board/src/agents.ts` and `board/wrangler.jsonc`, creates the member folders (each with `.claude/settings.local.json` holding that member's `BOARD_AS`), updates `.gitignore`, removes the first-run gate from `AGENTS.md`, and replaces `README.md` with the project's own (the kit's README moves to `docs/SKELETON_README.md`). It refuses to run twice; later changes to the team go into the config and then `node tools/setup/apply.mjs --refresh`.
 
@@ -90,13 +90,14 @@ When you have the answers, show **one summary table** and ask the Owner to confi
 
 Who does what: **you** run the read-only and project-local commands and ask before each cloud action; **the Owner** runs every command that logs in or creates secrets, in their own terminal.
 
-1. The Owner runs `npx wrangler login` (a browser opens; this is the Owner's Cloudflare login). You check with `cd board && npm install && npx wrangler whoami`, and put the account id into `board.cloudflareAccountId` in the config.
-2. With the Owner's yes: `npx wrangler d1 create <d1Name>` and `npx wrangler r2 bucket create <r2Bucket>`; put the database id into `board.d1Id`; run `node tools/setup/apply.mjs --board-only`.
-3. Optional sign-in and feedback form: the Owner creates a Google OAuth client (type "Web application", authorized JavaScript origin = the board address) and a Turnstile widget (hostname = the board host) in the vendors' consoles, and tells you the two **public** values (client id, site key); put them in the config and run `--board-only` again. Secret values are never given to you.
-4. The Owner runs `npm run setup:secrets` once in `board/` (it creates one key per team member, stores them in the macOS Keychain or in key files under `~/.boardkit/<slug>/keys/`, and sets the Worker secrets without printing them). A member on another machine or in a cloud session needs its own key placed there **by the Owner**; you never copy or move a key. Say exactly this to the Owner when it applies.
-5. With the Owner's yes: `npm run check && npm test`, `npm run db:remote`, `npm run deploy` (in `board/`). If the address is a custom domain the Owner must have that domain on Cloudflare.
-6. Check: `BOARD_AS=<lead identity> node tools/board.mjs agents`, then name the default project: `node tools/board.mjs projects rename main "<Project Name>"`, then create the first card ("Set up the team", assigned to the Lead).
-7. If the Owner chose to skip the board for now, tell them how to add it later (the same steps, `board.enabled` to `true`).
+1. The Owner creates the free Cloudflare account if there is none, picks the workers.dev subdomain in the dashboard (question 12), and runs `npx wrangler login` (a browser opens; this is the Owner's own login). You check with `cd board && npm install && npx wrangler whoami`, and put the account id into `board.cloudflareAccountId` and the final address into `board.url`.
+2. With the Owner's yes: `npx wrangler d1 create <d1Name>` (and `npx wrangler r2 bucket create <slug>-board-files` only if the Owner chose attachments); put the database id into `board.d1Id`; run `node tools/setup/apply.mjs --board-only`.
+3. Only if the Owner wants the public feedback form: they create a Turnstile widget (hostname = the board host) in the Cloudflare dashboard and tell you its **public** site key; put it in `board.turnstileSiteKey` and run `--board-only` again. The widget's secret key is never given to you.
+4. The Owner runs `npm run setup:secrets` once in `board/` (it creates the owner key, one key per team member and the session secret, stores the keys in the macOS Keychain or in key files under `~/.boardkit/<slug>/keys/`, and sets the Worker secrets without printing them). A member on another machine or in a cloud session needs its own key placed there **by the Owner**; you never copy or move a key. Say exactly this to the Owner when it applies.
+5. With the Owner's yes: `npm run check && npm test`, `npm run db:remote`, `npm run deploy` (in `board/`).
+6. Sign-in: the Owner runs `node board/cli/board.mjs owner-key --copy` in their own terminal and pastes the key into the page at `<board.url>/board/`. You never run that command. Then check as an agent: `BOARD_AS=<lead identity> node tools/board.mjs agents`, name the default project (`node tools/board.mjs projects rename main "<Project Name>"`) and create the first card ("Set up the team", assigned to the Lead).
+7. Optional, only if the Owner chose it: deploying from GitHub on every push. The Owner adds the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` (repository settings, or `gh secret set` in their own terminal); `docs/BOARD_HOSTING.md` says which token permissions are needed. You never see the values.
+8. If the Owner chose to skip the board for now, tell them how to add it later (the same steps, `board.enabled` to `true`).
 
 ## 8. Verify and hand over
 

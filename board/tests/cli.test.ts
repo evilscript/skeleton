@@ -64,9 +64,50 @@ function run(args: string[], env: Record<string, string>): Promise<{ code: numbe
 test("the help lists the variables and every status; an unknown command fails", async () => {
   const help = await run([], {});
   assert.equal(help.code, 0);
-  for (const word of ["BOARD_AS", "BOARD_KEY", "BOARD_AUTH=proxy", "BOARD_URL", "BOARD_PROJECT", ...STATUS_SLUGS]) assert.ok(help.out.includes(word), word);
+  for (const word of ["BOARD_AS", "BOARD_KEY", "BOARD_AUTH=proxy", "BOARD_URL", "BOARD_PROJECT", "owner-key [--copy]", ...STATUS_SLUGS]) assert.ok(help.out.includes(word), word);
+  // --help prints the same text and succeeds; an unknown command prints it and fails.
+  const flag = await run(["--help"], {});
+  assert.equal(flag.code, 0);
+  assert.equal(flag.out, help.out);
   assert.equal((await run(["nonsense"], {})).code, 1);
 });
+
+test("the Owner's board name comes from owner.boardName, default owner", () => {
+  assert.equal(boardSettings({}, null).ownerBoardName, "owner");
+  assert.equal(boardSettings({}, { file: "x", config: { owner: { boardName: "boss" } } }).ownerBoardName, "boss");
+  assert.equal(boardSettings({}, { file: "x", config: { owner: {} } }).ownerBoardName, "owner");
+});
+
+test("owner-key warns, and refuses to print into a pipe or to run in an agent session", () => tempDir(async (home) => {
+  // A key file is there, so a refusal is not just "no key"; the key must never leave the program.
+  const settings = boardSettings({});
+  const keys = join(home, ".boardkit", settings.slug, "keys");
+  mkdirSync(keys, { recursive: true });
+  const SECRET = "owner-key-that-must-not-leak-" + "0".repeat(34);
+  writeFileSync(join(keys, settings.ownerBoardName), SECRET + "\n");
+  chmodSync(join(keys, settings.ownerBoardName), 0o600);
+  const base = { HOME: home, USERPROFILE: home };
+  const quiet = (r: { out: string; err: string }) => {
+    assert.equal(r.out, "");
+    assert.ok(!r.out.includes(SECRET) && !r.err.includes(SECRET), "the key was printed");
+  };
+  // stdout is a pipe here (as in an agent's shell or a log): no key without --copy.
+  let r = await run(["owner-key"], base);
+  assert.equal(r.code, 1);
+  assert.match(r.err, /WARNING: this is the Owner's credential/);
+  assert.match(r.err, /refusing to print the owner key/);
+  quiet(r);
+  // --copy needs an interactive terminal too (stdin here is a pipe).
+  r = await run(["owner-key", "--copy"], base);
+  assert.equal(r.code, 1);
+  assert.match(r.err, /refusing to copy the owner key/);
+  quiet(r);
+  // A session that has a board identity is an agent's, not the Owner's own terminal.
+  r = await run(["owner-key", "--copy"], { ...base, BOARD_AS: "some-agent" });
+  assert.equal(r.code, 1);
+  assert.match(r.err, /BOARD_AS is set/);
+  quiet(r);
+}));
 
 // A local server stands in for the Worker: it records who asked.
 async function withServer(fn: (url: string, seen: (string | undefined)[]) => Promise<void>) {

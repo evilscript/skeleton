@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta
       name="description"
-      content="Share bugs, ideas and screenshots. No account required."
+      content="Share bugs and ideas. No account required."
     />
     <title>Feedback</title>
     <link rel="icon" href="/board/favicon.svg" type="image/svg+xml" />
@@ -24,8 +24,12 @@
         <div class="eyebrow">BUILT WITH YOUR FEEDBACK</div>
         <h1>Help us make<br />this better.</h1>
         <p>
-          Tell us what went wrong, or what you would like to see. A screenshot
-          helps us see what you see.
+          Tell us what went wrong, or what you would like to see.<span
+            data-needs-files
+            hidden
+          >
+            A screenshot helps us see what you see.</span
+          >
         </p>
         <div class="account">
           <span class="dot"></span><span>No account needed</span>
@@ -38,7 +42,7 @@
               Say what you did, what you saw and what you expected to happen
               instead.
             </li>
-            <li>
+            <li data-needs-files hidden>
               Add a screenshot: paste it here, drag it in, or choose a file.
             </li>
             <li>
@@ -77,12 +81,14 @@
             autofocus
             placeholder="What did you do? What did you see? What should happen instead?"
           ></textarea>
-          <div class="label-row">
+          <div class="label-row" data-needs-files hidden>
             <label for="images">Screenshots</label
             ><span class="small">Up to 6 · 4 MB each</span>
           </div>
           <div
             id="dropzone"
+            data-needs-files
+            hidden
             tabindex="0"
             role="group"
             aria-label="Paste a screenshot here"
@@ -98,7 +104,7 @@
               class="sr-only"
             /><span class="small">PNG / JPG / WebP</span>
           </div>
-          <div id="previews" aria-live="polite"></div>
+          <div id="previews" aria-live="polite" data-needs-files hidden></div>
           <details>
             <summary>More (optional): title, diagnostics, contact</summary>
             <label for="title">Title</label
@@ -130,8 +136,12 @@
             />
           </details>
           <p class="small privacy">
-            Only the maintainers can view your feedback and images. They are
-            not published. Please do not include passwords or sensitive
+            Only the maintainers can view your feedback<span
+              data-needs-files
+              hidden
+            >
+              and images</span
+            >. They are not published. Please do not include passwords or sensitive
             information.
           </p>
           <div id="captcha"></div>

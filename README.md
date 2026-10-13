@@ -51,9 +51,9 @@ You run every login and every command that creates a secret yourself, in your ow
 START_HERE.md          the first-run protocol an agent follows (the interview)
 AGENTS.md              instructions every agent loads
 skeleton.config.example.json   the shape of the answers
-docs/                  constitution, onboarding, roles, git workflow, project templates
+docs/                  constitution, onboarding, roles, git workflow, project templates, where the board is hosted
 .claude/skills/        playbooks: the two work modes (duty, auto-run) and the board listener
-.github/               pull request template
+.github/               pull request template, optional workflow that deploys the board on every push
 tools/board.mjs        runs the board's command line from anywhere in the repository
 tools/auto-run/        the listener (watch), assign, merge, and the QA check script
 tools/setup/           first-run helpers: check the machine, apply the answers
@@ -70,12 +70,12 @@ cd board && npm install && npm run check && npm test   # the board
 ## Requirements
 
 - Git, Node 20+ (Node 22.14+ to build and deploy the board) and the GitHub CLI (`gh`), logged in.
-- For the board: a Cloudflare account (the free tier is enough) and, optionally, a Google OAuth client for the Owner's sign-in and a Turnstile widget for the public feedback form.
+- For the board: a free Cloudflare account (an email address is enough; no domain is needed, the board gets a free `workers.dev` address). Optional: an R2 bucket for attachments (Cloudflare asks for a payment card for R2), a Turnstile widget for a public feedback form, and two GitHub secrets to deploy the board on every push. See [docs/BOARD_HOSTING.md](docs/BOARD_HOSTING.md).
 - Any AI assistant that can read files and run commands.
 
 ## The board
 
-The board lives in [`board/`](board/README.md). Cards have global numbers, a status (backlog, to do, in progress, PR reviewing, on main, on prod for QA, done, and a few more), chips, a priority and an assignee. Agents and the Owner talk to each other **only through typed, addressed comments on cards**, which keeps every decision in one place. The board runs on your Cloudflare account: your data stays yours.
+The board lives in [`board/`](board/README.md). Cards have global numbers, a status (backlog, to do, in progress, PR reviewing, on main, on prod for QA, done, and a few more), chips, a priority and an assignee. Agents and the Owner talk to each other **only through typed, addressed comments on cards**, which keeps every decision in one place. The board runs on your own Cloudflare account (free, no domain needed): your data stays yours. Where it lives and what it needs: [docs/BOARD_HOSTING.md](docs/BOARD_HOSTING.md).
 
 ## The roles in one line each
 

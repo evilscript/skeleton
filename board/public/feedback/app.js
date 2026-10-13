@@ -6,13 +6,15 @@ const copy = {
   too_many_images: "You can attach up to 6 screenshots.",
   invalid_image: "Use PNG, JPG or WebP images, no more than 4 MB each.",
   too_large: "The images are too large. Resize them and try again.",
-  invalid_fields: "Add at least one thing: a description, screenshot, title, diagnostics or contact.",
+  invalid_fields: "Add at least one thing: a description, title, diagnostics or contact.",
+  files_disabled: "Screenshots are not available here. Remove them and send again.",
   captcha: "Complete the verification, then submit again.",
   rate_limit: "Too many submissions. Please try again in 10 minutes.",
   unavailable: "We could not send this yet. Try again shortly; your content is still here.",
   invalid_origin: "Please submit again from the feedback page.",
 };
 let files = [],
+  filesEnabled = false, // file storage is on (GET /api/info "files"); until then the image field stays hidden
   widget,
   config,
   busy = false,
@@ -65,7 +67,7 @@ function renderPreviews() {
   });
 }
 function addFiles(incoming) {
-  if (busy) return;
+  if (busy || !filesEnabled) return;
   const items = Array.from(incoming);
   if (files.length + items.length > 6) return message("too_many_images");
   if (
@@ -191,12 +193,18 @@ form.addEventListener("keydown", (e) => {
     form.requestSubmit();
   }
 });
-// The name the pages show (the Worker's PROJECT_NAME var); "Board" when it is missing.
-async function showName() {
+// The name the pages show (the Worker's PROJECT_NAME var; "Board" when it is missing) and
+// whether the board stores files: without storage the form has no image field at all.
+async function showInfo() {
   try {
     const response = await fetch("/api/info");
     if (!response.ok) return;
-    const name = (await response.json()).projectName;
+    const info = await response.json();
+    filesEnabled = info.files === true;
+    document.querySelectorAll("[data-needs-files]").forEach((node) => (node.hidden = !filesEnabled));
+    if (filesEnabled) copy.invalid_fields = "Add at least one thing: a description, screenshot, title, diagnostics or contact.";
+    message(errorCode);
+    const name = info.projectName;
     if (!name) return;
     $("brand-name").textContent = name;
     $("footer-name").textContent = name;
@@ -245,5 +253,5 @@ async function initialize() {
   }
 }
 render();
-showName();
+showInfo();
 initialize();

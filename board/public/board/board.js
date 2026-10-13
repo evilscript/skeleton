@@ -1,7 +1,7 @@
 // The board: one page per project (a switcher in the top bar), columns for the
 // statuses (Done in a floating panel), cards with chips, assignee, description,
 // screenshots and files. Data comes from the Worker's /api; the owner signs
-// in with Google, the agents use the CLI with their own keys.
+// in with the owner key, the agents use the CLI with their own keys.
 // A card has a status (docs/STATUSES.md); a column draws one bordered layer
 // per status it holds. public/board/statuses.js says which.
 import { commentBodyError, COMMENT_ERRORS } from "./comment-rules.js";
@@ -17,6 +17,7 @@ let AGENTS = { owner: "Owner" };
 let TARGETS = [["owner", "Owner"]];
 let AGENT_INDEX = {};   // agent name -> its place in the list, which picks its colour
 let BRAND = "Board";    // the name the pages show (GET /api/info)
+let FILES = true;       // file storage is on (GET /api/info "files"); without it the attach controls are hidden
 // "owner" is the author of everything the owner does on the page; OWNER.name is the owner's assignee name.
 const isOwner = (name) => name === "owner" || name === OWNER.name;
 // The owner has a colour of its own in the style sheet; the agents take one from a palette.
@@ -36,7 +37,11 @@ async function loadAgents() {
 async function loadBrand() {
   try {
     const res = await fetch("/api/info");
-    if (res.ok) BRAND = (await res.json()).projectName || BRAND;
+    if (res.ok) {
+      const info = await res.json();
+      BRAND = info.projectName || BRAND;
+      FILES = info.files !== false;
+    }
   } catch {}
   $("gate-title").textContent = BRAND;
   if (!project) document.title = BRAND;
@@ -125,7 +130,7 @@ function toast(text, undo) {
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => (t.hidden = true), undo ? 7000 : 3000);
 }
-const ERRORS = { unauthorized: "Your session expired; reload the page", forbidden: "Not allowed", not_found: "Card not found", too_large: "The file is too large (25 MB at most)", invalid_image: "Screenshots must be PNG, JPEG, WebP or GIF", exists: "That name is already taken", invalid_fields: "Invalid content", title_length: "The title must be 1 to 200 characters", description_too_long: "The description is too long (about 1.8 MB at most); attach very long content as a file", rate_limit: "Too fast: at most 60 comments per author per hour", comment_too_long: "The comment is too long (4 KB at most); put long content in a link", invalid_ref: "A link must start with http:// or https://", invalid_type: "Invalid comment type", invalid_to: "Invalid recipient", invalid_key: "A project key uses lowercase letters, digits and hyphens only (30 characters at most, \"all\" is reserved); give one when the name has no latin letters", invalid_name: "A project name must be 1 to 60 characters", project_exists: "A project with that key already exists", too_many_projects: "Too many projects (50 at most)", unknown_project: "Project not found", invalid_assignee: "Unknown assignee", invalid_priority: "Invalid priority", invalid_status: "Invalid status", invalid_column: "Invalid column" };
+const ERRORS = { unauthorized: "Your session expired; reload the page", forbidden: "Not allowed", not_found: "Card not found", too_large: "The file is too large (25 MB at most)", invalid_image: "Screenshots must be PNG, JPEG, WebP or GIF", exists: "That name is already taken", invalid_fields: "Invalid content", title_length: "The title must be 1 to 200 characters", description_too_long: "The description is too long (about 1.8 MB at most); attach very long content as a file", rate_limit: "Too fast: at most 60 comments per author per hour", comment_too_long: "The comment is too long (4 KB at most); put long content in a link", invalid_ref: "A link must start with http:// or https://", invalid_type: "Invalid comment type", invalid_to: "Invalid recipient", invalid_key: "A project key uses lowercase letters, digits and hyphens only (30 characters at most, \"all\" is reserved); give one when the name has no latin letters", invalid_name: "A project name must be 1 to 60 characters", project_exists: "A project with that key already exists", too_many_projects: "Too many projects (50 at most)", unknown_project: "Project not found", invalid_assignee: "Unknown assignee", invalid_priority: "Invalid priority", invalid_status: "Invalid status", invalid_column: "Invalid column", files_disabled: "This board has no file storage", not_owner: "That is not the owner key" };
 
 async function call(method, path, data) {
   const opts = { method, headers: { "x-board": "1" } };
@@ -150,7 +155,7 @@ async function start() {
     me = await res.json();
     await loadAgents();
     $("app").hidden = false;
-    $("who").textContent = me.actor === "owner" ? me.name : AGENTS[me.name];
+    $("who").textContent = AGENTS[me.name] || me.name;
     await loadProjects();
     await enterProject(pickProject());
     setInterval(async () => {
@@ -166,24 +171,18 @@ async function start() {
     return;
   }
   $("gate").hidden = false;
-  const cfg = await fetch("/api/config").then((r) => r.json());
-  if (cfg.development) {
-    $("google-button").append(el("button", { class: "btn primary", onclick: async () => { await call("POST", "/api/session", { dev: true }); location.reload(); } }, "Local development sign-in"));
-    return;
-  }
-  if (!cfg.googleClientId) { $("gate-text").textContent = "Google sign-in is not set up yet (GOOGLE_CLIENT_ID)."; return; }
-  const s = el("script", { src: "https://accounts.google.com/gsi/client", async: true });
-  s.onload = () => {
-    google.accounts.id.initialize({
-      client_id: cfg.googleClientId,
-      callback: async (r) => {
-        try { await call("POST", "/api/session", { credential: r.credential }); location.reload(); }
-        catch { $("gate-text").textContent = "This account cannot use the board."; }
-      },
-    });
-    google.accounts.id.renderButton($("google-button"), { theme: "outline", size: "large", text: "signin_with" });
+  $("gate-form").onsubmit = async (ev) => {
+    ev.preventDefault();
+    const field = $("gate-key");
+    $("gate-submit").disabled = true;
+    try { await call("POST", "/api/session", { key: field.value.trim() }); location.reload(); }
+    catch { field.value = ""; field.focus(); }
+    finally { $("gate-submit").disabled = false; }
   };
-  document.head.append(s);
+  const cfg = await fetch("/api/config").then((r) => r.json()).catch(() => ({}));
+  if (cfg.development) {
+    $("dev-signin").append(el("button", { type: "button", class: "btn", onclick: async () => { await call("POST", "/api/session", { dev: true }); location.reload(); } }, "Local development sign-in"));
+  }
 }
 $("logout").onclick = async () => { await call("DELETE", "/api/session"); location.reload(); };
 
@@ -454,9 +453,9 @@ function cardEl(c) {
   const e = el("article", { class: "card", draggable: "true", "data-no": c.no, "data-prio": c.priority, onclick: () => openCard(c.no) },
     // The status chip sits at the card's top right; the number and title run on beside it and under it.
     el("div", { class: "head" }, statusEl(c.status), tools, el("span", { class: "no" }, "#" + c.no), el("span", { class: "title" }, c.title)),
-    c.thumb && el("img", { class: "thumb", src: `/api/files/${c.thumb}`, alt: "", loading: "lazy" }),
+    FILES && c.thumb && el("img", { class: "thumb", src: `/api/files/${c.thumb}`, alt: "", loading: "lazy" }),
     el("div", { class: "meta" }, priorityEl(c.priority), c.chips.map((n) => chipEl(n)), agentEl(c.assignee),
-      (c.shots || c.files) ? el("span", { class: "icons" }, [c.shots && `Images ${c.shots}`, c.files && `Files ${c.files}`].filter(Boolean).join(" · ")) : null,
+      FILES && (c.shots || c.files) ? el("span", { class: "icons" }, [c.shots && `Images ${c.shots}`, c.files && `Files ${c.files}`].filter(Boolean).join(" · ")) : null,
       c.commentCount ? el("span", { class: "icons talk", title: "Comments" }, `Comments ${c.commentCount}`) : null));
   e.addEventListener("dragstart", (ev) => { dragging = c; e.classList.add("dragging"); ev.dataTransfer.setData("text/plain", String(c.no)); });
   e.addEventListener("dragend", () => { dragging = null; e.classList.remove("dragging"); });
@@ -609,17 +608,20 @@ async function openCard(no) {
       el("label", {}, "Description"), el("div", {}, view, area, descBtns),
       card.report && el("label", {}, "Diagnostics"), card.report && el("details", { class: "report" }, el("summary", {}, "Show"), el("pre", {}, card.report)),
       card.contact && el("label", {}, "Contact"), card.contact && el("div", {}, card.contact),
-      el("label", {}, `Screenshots ${shots.length}`),
-      el("div", {}, el("div", { class: "shots" }, shots.map((f) =>
-        el("div", { class: "shot" },
-          el("img", { src: `/api/files/${f.id}`, alt: f.name, loading: "lazy", onclick: () => { $("zoom-img").src = `/api/files/${f.id}`; $("zoom-dlg").showModal(); } }),
-          confirmButton("×", "Delete?", () => call("DELETE", `/api/files/${f.id}`).then(refresh))))),
-        dropZone("Drag screenshots here, click to choose, or paste", (fs) => upload(no, fs.filter((f) => f.type.startsWith("image/")), "screenshot").then(refresh))),
-      el("label", {}, `Files ${others.length}`),
-      el("div", {}, el("div", { class: "files" }, others.map((f) =>
-        el("div", { class: "file" }, el("a", { href: `/api/files/${f.id}`, download: f.name }, f.name), el("span", {}, size(f.size)),
-          confirmButton("Delete", "Delete?", () => call("DELETE", `/api/files/${f.id}`).then(refresh))))),
-        dropZone("Drag files here or click to choose (25 MB at most)", (fs) => upload(no, fs, "file").then(refresh))),
+      // Screenshots and attachments need file storage (R2); without it these rows are not drawn.
+      FILES && [
+        el("label", {}, `Screenshots ${shots.length}`),
+        el("div", {}, el("div", { class: "shots" }, shots.map((f) =>
+          el("div", { class: "shot" },
+            el("img", { src: `/api/files/${f.id}`, alt: f.name, loading: "lazy", onclick: () => { $("zoom-img").src = `/api/files/${f.id}`; $("zoom-dlg").showModal(); } }),
+            confirmButton("×", "Delete?", () => call("DELETE", `/api/files/${f.id}`).then(refresh))))),
+          dropZone("Drag screenshots here, click to choose, or paste", (fs) => upload(no, fs.filter((f) => f.type.startsWith("image/")), "screenshot").then(refresh))),
+        el("label", {}, `Files ${others.length}`),
+        el("div", {}, el("div", { class: "files" }, others.map((f) =>
+          el("div", { class: "file" }, el("a", { href: `/api/files/${f.id}`, download: f.name }, f.name), el("span", {}, size(f.size)),
+            confirmButton("Delete", "Delete?", () => call("DELETE", `/api/files/${f.id}`).then(refresh))))),
+          dropZone("Drag files here or click to choose (25 MB at most)", (fs) => upload(no, fs, "file").then(refresh))),
+      ],
       talkLabel, threadBox(no, (n) => { talkLabel.textContent = `Comments ${n}`; }),
       el("label", {}, "Activity"),
       el("div", { class: "activity" }, activity.map((a) => el("div", {}, `${when(a.at)} · ${who(a.actor)} · ${ACTIONS[a.action] || a.action} ${a.action === "assign" ? (AGENTS[a.detail] || "nobody") : a.action === "priority" ? (PRIORITY[a.detail] || "none") : a.action === "status" || a.action === "create" ? a.detail.replace(/[a-z_]+/g, (w) => (STATUSES.some((x) => x.slug === w) ? statusLabelFor(project, w) : w)) : a.detail}`)))),
@@ -634,7 +636,7 @@ async function openCard(no) {
 $("card-dlg").addEventListener("close", () => { openNo = null; openThread = null; });
 // Pasting an image while a card is open adds it as a screenshot.
 document.addEventListener("paste", (e) => {
-  if (!openNo || !$("card-dlg").open) return;
+  if (!FILES || !openNo || !$("card-dlg").open) return;
   const imgs = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith("image/"));
   if (!imgs.length) return;
   e.preventDefault();

@@ -366,5 +366,5 @@ Owner; nothing was released.
 - `.claude/skills/auto-run/`: both modes and the PM brief; `.claude/skills/board-listen/`: the listening playbook
 - `tools/auto-run/watch.mjs`: the board listener for every agent
 - `.github/pull_request_template.md`: the pull request template
-- `board/`: the board (`board/README.md`, `board/docs/STATUSES.md`, `board/docs/MAINTENANCE.md`)
+- `board/`: the board (`board/README.md`, `board/docs/STATUSES.md`, `board/docs/MAINTENANCE.md`); `docs/BOARD_HOSTING.md`: where it runs, what it needs, deploying from GitHub
 - `skeleton.config.json`: the project's configuration

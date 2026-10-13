@@ -1,0 +1,94 @@
+# Deploys the board (board/) to your own Cloudflare account whenever board/ changes on the default branch, and on demand.
+#
+# Optional automation. The first deploy is done once from the Owner's terminal (START_HERE.md, step 7), because it creates the
+# database and the secrets. After that, add two repository secrets and every push that touches board/ deploys by itself:
+#   CLOUDFLARE_API_TOKEN    an API token with Account > Workers Scripts > Edit and Account > D1 > Edit
+#                           (and Workers R2 Storage > Edit if the board uses R2)
+#   CLOUDFLARE_ACCOUNT_ID   the account id shown on the Cloudflare dashboard
+# The Owner creates the token and adds the secrets in the repository settings; no agent ever sees them.
+# The Worker's own secrets (SESSION_SECRET, OWNER_KEY, AGENT_KEYS) are set once by `npm run setup:secrets` and survive deploys.
+#
+# A database migration is never applied unattended: a push that changes board/migrations stops here with a message. Back the
+# database up (board/docs/MAINTENANCE.md), then run this workflow by hand with "migrate" ticked.
+name: Deploy the board
+
+on:
+  push:
+    branches: ["{{DEFAULT_BRANCH}}"]
+    paths: ["board/**", ".github/workflows/board-deploy.yml"]
+  workflow_dispatch:
+    inputs:
+      migrate:
+        description: "Apply pending database migrations first (only after a backup)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: board-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check what this run can do
+        id: gate
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          MIGRATE: ${{ inputs.migrate }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$ACCOUNT" ]; then
+            echo "::notice::The Cloudflare repository secrets are not set: nothing is deployed (see the header of this workflow)."
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ ! -f board/wrangler.jsonc ]; then
+            echo "::notice::board/wrangler.jsonc does not exist: run node tools/setup/apply.mjs first."
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          base="$BEFORE"
+          case "$base" in ""|0000000000000000000000000000000000000000) base="HEAD~1" ;; esac
+          if [ "${{ github.event_name }}" = "push" ] && [ "$(git diff --name-only "$base" HEAD -- board/migrations | wc -l)" != "0" ]; then
+            echo "::error::This push changes board/migrations. Back the database up, then run this workflow by hand with 'migrate' ticked."
+            exit 1
+          fi
+          echo "migrate=$MIGRATE" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.skip != 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: board/package-lock.json
+
+      - name: Install, check and test
+        if: steps.gate.outputs.skip != 'true'
+        working-directory: board
+        run: |
+          npm ci
+          npm run check
+          npm test
+
+      - name: Apply database migrations
+        if: steps.gate.outputs.skip != 'true' && steps.gate.outputs.migrate == 'true'
+        working-directory: board
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler d1 migrations apply DB --remote
+
+      - name: Deploy
+        if: steps.gate.outputs.skip != 'true'
+        working-directory: board
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy

@@ -46,15 +46,13 @@
   "board": {
     "enabled": true,
     "host": "cloudflare",
-    "url": "https://board.example.com",
+    "url": "https://acme-portal-board.your-subdomain.workers.dev",
     "defaultProject": "main",
-    "ownerEmails": ["jordan@example.com"],
-    "googleClientId": "",
     "turnstileSiteKey": "",
     "cloudflareAccountId": "",
     "d1Id": "",
     "d1Name": "acme-portal-board",
-    "r2Bucket": "acme-portal-board-files",
+    "r2Bucket": "",
     "workerName": "acme-portal-board",
     "keychainService": "acme-portal-board"
   },

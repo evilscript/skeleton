@@ -1,5 +1,5 @@
 import { AGENT_LIST, OWNER_ASSIGNEE } from "./agents.ts";
-import { actorName, actorOf, CLEAR_COOKIE, sessionCookie, verifyGoogle, type Actor, type AuthEnv } from "./auth.ts";
+import { actorName, actorOf, CLEAR_COOKIE, isOwnerKey, sessionCookie, type Actor, type AuthEnv } from "./auth.ts";
 import { assigneeValue as assignee, boundedForm, cardTitle, commentFields, DEFAULT_PROJECT, fields, hasContent, imageExtension, InputError, keyFromName, MAX_FILE, MAX_IMAGES, MAX_PROJECTS, priorityValue as priority, projectKey, projectName } from "./validation.ts";
 import { COMMENT_ERRORS } from "../public/board/comment-rules.js";
 import { COLUMN_KEYS, columnOf, projectStatuses, STATUS_SLUGS, statusFromWord, statusesOf } from "../public/board/statuses.js";
@@ -7,7 +7,7 @@ import { COLUMN_KEYS, columnOf, projectStatuses, STATUS_SLUGS, statusFromWord, s
 interface Env extends AuthEnv {
   ASSETS: Fetcher;
   DB: D1Database;
-  FILES: R2Bucket;
+  FILES?: R2Bucket; // absent when the board has no R2 bucket: files and screenshots are switched off
   TURNSTILE_SITE_KEY: string;
   TURNSTILE_SECRET: string;
   ENVIRONMENT: string;
@@ -30,6 +30,18 @@ async function digest(text: string) {
   return Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 const now = () => new Date().toISOString();
+
+// File storage is optional. Without the FILES binding the file endpoints answer
+// 501 files_disabled, the feedback form takes no images, and nothing below
+// touches the bucket.
+function bucket(env: Env): R2Bucket {
+  if (!env.FILES) throw new InputError("files_disabled", 501);
+  return env.FILES;
+}
+// Best-effort cleanup of stored objects: nothing to do without a bucket, and a failure is not an error.
+async function dropObjects(env: Env, ids: string | string[]): Promise<void> {
+  if (env.FILES) await env.FILES.delete(ids).catch(() => {});
+}
 
 // The public feedback form files into the default project (id 1); other
 // projects get their cards from the board, the CLI or the agents.
@@ -408,7 +420,7 @@ async function removeCard(env: Env, actor: Actor, no: number, purge: boolean) {
     env.DB.prepare("DELETE FROM cards WHERE no = ?").bind(no),
     log(env, no, by, "purge", "", row.project_id),
   ]);
-  if (results.length) await env.FILES.delete(results.map((r) => r.id)).catch(() => {});
+  if (results.length) await dropObjects(env, results.map((r) => r.id));
   return json({ no, deleted: true });
 }
 
@@ -522,6 +534,7 @@ function sniffImage(type: string, bytes: Uint8Array): boolean {
 }
 
 async function addFiles(env: Env, actor: Actor, no: number, request: Request) {
+  const store = bucket(env);
   const exists = await env.DB.prepare("SELECT no FROM cards WHERE no = ?").bind(no).first();
   if (!exists) throw new InputError("not_found", 404);
   let form: FormData;
@@ -537,7 +550,7 @@ async function addFiles(env: Env, actor: Actor, no: number, request: Request) {
     if (kind === "screenshot" && !sniffImage(type, bytes)) throw new InputError("invalid_image");
     const id = crypto.randomUUID();
     const name = (f.name || "file").replace(/[\\/\r\n"]/g, "_").slice(0, 200);
-    await env.FILES.put(id, bytes, { httpMetadata: { contentType: type } });
+    await store.put(id, bytes, { httpMetadata: { contentType: type } });
     try {
       await env.DB.batch([
         env.DB.prepare("INSERT INTO files(id, card_no, kind, name, type, size, created_at, created_by) VALUES (?,?,?,?,?,?,?,?)").bind(id, no, kind, name, type, f.size, at, by),
@@ -545,7 +558,7 @@ async function addFiles(env: Env, actor: Actor, no: number, request: Request) {
         log(env, no, by, kind === "screenshot" ? "screenshot" : "attach", name),
       ]);
     } catch (e) {
-      await env.FILES.delete(id).catch(() => {});
+      await dropObjects(env, id);
       throw e;
     }
     out.push({ id, name });
@@ -554,9 +567,10 @@ async function addFiles(env: Env, actor: Actor, no: number, request: Request) {
 }
 
 async function getFile(env: Env, id: string) {
+  const store = bucket(env);
   const row = await env.DB.prepare("SELECT name, type, kind FROM files WHERE id = ?").bind(id).first<{ name: string; type: string; kind: string }>();
   if (!row) throw new InputError("not_found", 404);
-  const obj = await env.FILES.get(id);
+  const obj = await store.get(id);
   if (!obj) throw new InputError("not_found", 404);
   const image = row.kind === "screenshot" && /^image\/(png|jpeg|webp|gif)$/.test(row.type);
   return new Response(obj.body, {
@@ -579,7 +593,7 @@ async function deleteFile(env: Env, actor: Actor, id: string) {
     env.DB.prepare("UPDATE cards SET updated_at = ?, updated_by = ? WHERE no = ?").bind(now(), by, row.card_no),
     log(env, row.card_no, by, "remove file", row.name),
   ]);
-  await env.FILES.delete(id).catch(() => {});
+  await dropObjects(env, id);
   return json({ id, deleted: true });
 }
 
@@ -650,11 +664,13 @@ async function submitFeedback(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   if (request.headers.get("origin") !== url.origin) throw new InputError("invalid_origin", 403);
   const local = env.ENVIRONMENT === "development" && ["localhost", "127.0.0.1"].includes(url.hostname);
-  if (!env.DB || !env.FILES || (!local && (!env.TURNSTILE_SITE_KEY || !env.TURNSTILE_SECRET))) throw new InputError("unavailable", 503);
+  if (!env.DB || (!local && (!env.TURNSTILE_SITE_KEY || !env.TURNSTILE_SECRET))) throw new InputError("unavailable", 503);
   const form = await boundedForm(request);
   const data = fields(form);
   // Everything is optional, but not nothing at all.
   const imageCount = form.getAll("images").length;
+  // Without file storage the form has no image field; a request that carries images anyway is refused, not dropped silently.
+  if (imageCount && !env.FILES) throw new InputError("files_disabled", 501);
   if (!hasContent(data, imageCount)) throw new InputError("invalid_fields");
   const ip = request.headers.get("CF-Connecting-IP");
   if (!ip && !local) throw new InputError("unavailable", 503);
@@ -692,8 +708,9 @@ async function submitFeedback(request: Request, env: Env): Promise<Response> {
   const at = now();
   const ids = images.map(() => crypto.randomUUID());
   try {
-    for (const [i, image] of images.entries()) {
-      await env.FILES.put(ids[i], image.bytes, { httpMetadata: { contentType: image.type } });
+    if (images.length) {
+      const store = bucket(env);
+      for (const [i, image] of images.entries()) await store.put(ids[i], image.bytes, { httpMetadata: { contentType: image.type } });
     }
     const chips = ["User feedback"];
     // One transaction: the card gets the next number and its screenshots
@@ -714,7 +731,7 @@ async function submitFeedback(request: Request, env: Env): Promise<Response> {
   } catch (error) {
     const existing = await env.DB.prepare("SELECT no FROM cards WHERE request_key = ?").bind(requestKey).first<{ no: number }>().catch(() => undefined);
     // Keep the images when we can't tell whether the card was committed.
-    if (existing === null) await env.FILES.delete(ids).catch(() => {});
+    if (existing === null && ids.length) await dropObjects(env, ids);
     if (existing) return json({ id: `#${existing.no}` });
     throw error;
   }
@@ -730,25 +747,23 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   if (path === "/api/config" && method === "GET") {
     return json({
       siteKey: env.TURNSTILE_SITE_KEY || "",
-      googleClientId: env.GOOGLE_CLIENT_ID || "",
       development: env.ENVIRONMENT === "development" && ["localhost", "127.0.0.1"].includes(url.hostname),
     });
   }
-  // Public: the name the pages show (the PROJECT_NAME var), for the feedback form and the sign-in page.
-  if (path === "/api/info" && method === "GET") return json({ projectName: env.PROJECT_NAME || "Board" });
+  // Public: the name the pages show (the PROJECT_NAME var) and whether file storage is on (the FILES binding),
+  // for the feedback form, the sign-in page and the board's attach controls.
+  if (path === "/api/info" && method === "GET") return json({ projectName: env.PROJECT_NAME || "Board", files: Boolean(env.FILES) });
   if (path === "/api/feedback" && method === "POST") return submitFeedback(request, env);
   if (path === "/api/session" && method === "POST") {
     if (request.headers.get("origin") !== url.origin) throw new InputError("invalid_origin", 403);
     const b = await body(request);
-    // Local development only: sign in as the owner without Google.
+    // Local development only: sign in as the owner without the key.
     const local = env.ENVIRONMENT === "development" && ["localhost", "127.0.0.1"].includes(url.hostname);
-    if (local && b.dev === true) {
-      const email = env.OWNER_EMAILS.split(",")[0].trim();
-      return json({ email }, 200, { "set-cookie": await sessionCookie(env, email) });
-    }
-    const email = await verifyGoogle(env, str(b.credential, 10, 5000));
-    if (!email || !env.SESSION_SECRET) throw new InputError("not_owner", 403);
-    return json({ email }, 200, { "set-cookie": await sessionCookie(env, email) });
+    if (local && b.dev === true) return json({ name: OWNER_ASSIGNEE.name }, 200, { "set-cookie": await sessionCookie(env) });
+    // The owner key (the OWNER_KEY secret) makes the caller the owner: a signed session cookie.
+    const given = str(b.key, 1, 500);
+    if (!env.SESSION_SECRET || !(await isOwnerKey(env, given))) throw new InputError("not_owner", 403);
+    return json({ name: OWNER_ASSIGNEE.name }, 200, { "set-cookie": await sessionCookie(env) });
   }
   if (path === "/api/session" && method === "DELETE") return json({ ok: true }, 200, { "set-cookie": CLEAR_COOKIE });
 

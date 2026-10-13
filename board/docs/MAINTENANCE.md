@@ -1,5 +1,22 @@
 # Board quotas, usage and backups
 
+## Credentials
+
+`npm run setup:secrets` (run by the Owner, in their own terminal) makes four kinds of secret and never prints them:
+
+| Secret | What it is for | Where a copy is kept on the Owner's machine |
+|---|---|---|
+| `OWNER_KEY` | the Owner's sign-in on the board page (at least 32 characters; compared in constant time, both sides hashed first) | Keychain or key file, account = `owner.boardName` (default `owner`); read with `node cli/board.mjs owner-key [--copy]` |
+| `SESSION_SECRET` | signs the session cookie the page gets after a right key (30 days) | none (not needed again) |
+| `AGENT_KEYS` | one key per agent in `src/agents.ts` | Keychain or key file, account = the agent's board name |
+| `TURNSTILE_SECRET` | the public feedback form's anti-spam check | none |
+
+Rotating: run the script again. It replaces every key at once and also replaces `SESSION_SECRET`, so every signed-in browser has to sign
+in again and every agent's key has to be placed again (a cloud session's credential too). A lost owner key is handled the same way: a
+Worker secret cannot be read back from Cloudflare. `scripts/add-agent.sh <name>` adds one agent without touching the others and without
+touching the owner key. An agent never reads, prints or copies `OWNER_KEY`; `owner-key` refuses to run in an agent session (`BOARD_AS` set)
+or into a pipe.
+
 ## Comment quota
 
 Comments are limited to **60 successful posts per author per UTC clock hour** (across all cards and projects) and **4096 UTF-8 bytes after
@@ -67,8 +84,8 @@ directory is private (0700); SQL files and verification manifests are 0600. Ever
 
 One copy is kept per UTC date; reruns verify the existing copy. A directory lock prevents overlapping jobs; after a crashed process, inspect
 the lock before removing it. Private transient Wrangler logs and local restore files are removed. A D1 export can temporarily pause queries.
-The SQL contains private card, contact and comment data, so keep it private. R2 attachment bytes are **not** in a D1 export; the backup
-includes their database metadata only.
+The SQL contains private card, contact and comment data, so keep it private. R2 attachment bytes (when the board has a bucket at all, see
+the README) are **not** in a D1 export; the backup includes their database metadata only.
 
 There is no scheduled backup: run it by hand, or schedule it yourself on a machine that has a signed-in Wrangler. A successful run
 verifies only the resulting SQL copy, not a backup schedule.

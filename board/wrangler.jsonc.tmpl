@@ -15,12 +15,10 @@
   },
   "observability": { "enabled": true },
   "vars": {
-    // Public values: the Turnstile site key and the Google OAuth client ID
-    // are shown to every browser anyway. Secrets (TURNSTILE_SECRET,
-    // SESSION_SECRET, AGENT_KEYS) are set with `npm run setup:secrets`.
+    // Public values: the Turnstile site key is shown to every browser anyway.
+    // Secrets (TURNSTILE_SECRET, SESSION_SECRET, OWNER_KEY, AGENT_KEYS) are set
+    // with `npm run setup:secrets`.
     "TURNSTILE_SITE_KEY": "{{TURNSTILE_SITE_KEY}}",
-    "GOOGLE_CLIENT_ID": "{{GOOGLE_CLIENT_ID}}",
-    "OWNER_EMAILS": "{{OWNER_EMAILS}}",
     "PROJECT_NAME": "{{PROJECT_NAME}}",
     "ENVIRONMENT": "production",
   },
@@ -28,6 +26,9 @@
   "d1_databases": [
     { "binding": "DB", "database_name": "{{D1_NAME}}", "database_id": "{{D1_ID}}" },
   ],
+  // File storage is optional: tools/setup/apply.mjs drops the next line when
+  // board.r2Bucket is empty (R2 needs a payment card even on the free plan). The
+  // board then works without screenshots, attachments and feedback images.
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "{{R2_BUCKET}}" }],
   "workers_dev": false,
 }

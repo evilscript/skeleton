@@ -1,19 +1,20 @@
-import { AGENT_NAMES, LIMITED_AGENTS } from "./agents.ts";
-// Who is calling: the owner (Google sign-in, then a signed session cookie)
-// or an agent (a bearer key per agent). Visitors on /feedback are nobody: they
-// can only create a feedback card. The agents are listed in src/agents.ts; a
-// key is optional for each of them.
+import { AGENT_NAMES, LIMITED_AGENTS, OWNER_ASSIGNEE } from "./agents.ts";
+// Who is calling: the owner (the owner key, exchanged once for a signed session
+// cookie) or an agent (a bearer key per agent). Visitors on /feedback are nobody:
+// they can only create a feedback card. The agents are listed in src/agents.ts; a
+// key is optional for each of them. The owner is always OWNER_ASSIGNEE from the
+// same file.
 export { AGENT_NAMES };
 export type Actor = { kind: "owner"; name: string } | { kind: "agent"; name: string; limited?: boolean };
 
 export interface AuthEnv {
-  GOOGLE_CLIENT_ID: string;
-  OWNER_EMAILS: string;
+  OWNER_KEY: string; // the owner's key, at least 32 characters (a Worker secret)
   SESSION_SECRET: string;
   AGENT_KEYS: string; // JSON: { "<agent name>": "<key>", ... }, one per agent in src/agents.ts
 }
 
 const SESSION_DAYS = 30;
+const MIN_KEY = 32;
 const enc = new TextEncoder();
 
 function b64url(bytes: ArrayBuffer | Uint8Array): string {
@@ -40,51 +41,19 @@ async function hmac(secret: string, text: string): Promise<string> {
   return b64url(await crypto.subtle.sign("HMAC", key, enc.encode(text)));
 }
 
-export function owners(env: AuthEnv): string[] {
-  return env.OWNER_EMAILS.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+// Is this the owner's key? Both sides are hashed first, so the comparison takes
+// the same time whatever was typed and the key's length is not revealed.
+export async function isOwnerKey(env: AuthEnv, given: string): Promise<boolean> {
+  if (!env.OWNER_KEY || env.OWNER_KEY.length < MIN_KEY) return false;
+  const [a, b] = await Promise.all([given, env.OWNER_KEY].map(async (k) => b64url(await crypto.subtle.digest("SHA-256", enc.encode(k)))));
+  return same(a, b);
 }
 
-// Google's signing keys change every few days; keep them for an hour.
-let jwks: { at: number; keys: JsonWebKey[] } | null = null;
-async function googleKeys(): Promise<JsonWebKey[]> {
-  if (jwks && Date.now() - jwks.at < 3600_000) return jwks.keys;
-  const res = await fetch("https://www.googleapis.com/oauth2/v3/certs", { signal: AbortSignal.timeout(10000) });
-  if (!res.ok) throw new Error("google_keys");
-  const body = (await res.json()) as { keys: JsonWebKey[] };
-  jwks = { at: Date.now(), keys: body.keys };
-  return body.keys;
-}
-
-// Verify a Google Identity Services ID token (RS256 JWT) and return the
-// owner's email, or null. Only the public client ID is needed.
-export async function verifyGoogle(env: AuthEnv, token: string): Promise<string | null> {
-  const parts = token.split(".");
-  if (parts.length !== 3 || !env.GOOGLE_CLIENT_ID) return null;
-  let header: { kid?: string; alg?: string }, claims: Record<string, unknown>;
-  try {
-    header = JSON.parse(new TextDecoder().decode(fromB64url(parts[0])));
-    claims = JSON.parse(new TextDecoder().decode(fromB64url(parts[1])));
-  } catch {
-    return null;
-  }
-  if (header.alg !== "RS256") return null;
-  const jwk = (await googleKeys()).find((k) => (k as { kid?: string }).kid === header.kid);
-  if (!jwk) return null;
-  const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
-  const ok = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, fromB64url(parts[2]), enc.encode(parts[0] + "." + parts[1]));
-  if (!ok) return null;
-  const now = Date.now() / 1000;
-  if (claims.aud !== env.GOOGLE_CLIENT_ID) return null;
-  if (claims.iss !== "accounts.google.com" && claims.iss !== "https://accounts.google.com") return null;
-  if (typeof claims.exp !== "number" || claims.exp < now) return null;
-  if (claims.email_verified !== true || typeof claims.email !== "string") return null;
-  const email = claims.email.toLowerCase();
-  return owners(env).includes(email) ? email : null;
-}
-
-export async function sessionCookie(env: AuthEnv, email: string): Promise<string> {
+// The session cookie says "this browser is the owner": the owner's name from
+// src/agents.ts and an expiry, signed with SESSION_SECRET.
+export async function sessionCookie(env: AuthEnv): Promise<string> {
   const exp = Math.floor(Date.now() / 1000) + SESSION_DAYS * 86400;
-  const body = b64url(enc.encode(`${email}|${exp}`));
+  const body = b64url(enc.encode(`${OWNER_ASSIGNEE.name}|${exp}`));
   const sig = await hmac(env.SESSION_SECRET, body);
   return `session=${body}.${sig}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}`;
 }
@@ -94,9 +63,9 @@ async function fromCookie(env: AuthEnv, request: Request): Promise<Actor | null>
   const m = (request.headers.get("cookie") || "").match(/(?:^|;\s*)session=([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)/);
   if (!m || !env.SESSION_SECRET) return null;
   if (!same(await hmac(env.SESSION_SECRET, m[1]), m[2])) return null;
-  const [email, exp] = new TextDecoder().decode(fromB64url(m[1])).split("|");
-  if (Number(exp) < Date.now() / 1000 || !owners(env).includes(email)) return null;
-  return { kind: "owner", name: email };
+  const [name, exp] = new TextDecoder().decode(fromB64url(m[1])).split("|");
+  if (!(Number(exp) >= Date.now() / 1000) || name !== OWNER_ASSIGNEE.name) return null;
+  return { kind: "owner", name: OWNER_ASSIGNEE.name };
 }
 
 function fromKey(env: AuthEnv, request: Request): Actor | null {
@@ -128,6 +97,7 @@ export async function actorOf(env: AuthEnv, request: Request): Promise<Actor | n
   return owner;
 }
 
+// The name written on comments, activity and updates: the owner's is OWNER_ASSIGNEE.name.
 export function actorName(a: Actor): string {
-  return a.kind === "owner" ? "owner" : a.name;
+  return a.name;
 }

@@ -59,6 +59,8 @@ test('the first run replaces tokens, generates files and refuses to run twice', 
   const c = example();
   c.board.d1Id = 'test-d1-id';
   c.board.cloudflareAccountId = 'test-account';
+  c.board.url = 'https://board.example.com';
+  c.board.r2Bucket = 'acme-portal-board-files';
   const dir = setup(c);
   try {
     const r = apply(dir);
@@ -83,6 +85,7 @@ test('the first run replaces tokens, generates files and refuses to run twice', 
     assert.match(wrangler, /"database_id": "test-d1-id"/);
     assert.match(wrangler, /"account_id": "test-account"/);
     assert.match(wrangler, /"pattern": "board\.example\.com"/);
+    assert.match(wrangler, /"bucket_name": "acme-portal-board-files"/);
     assert.ok(!/\{\{/.test(wrangler));
     // member folders, .gitignore, README
     assert.equal(JSON.parse(readFileSync(join(dir, 'Dev - Bolt', '.claude', 'settings.local.json'), 'utf8')).env.BOARD_AS, 'agent-bolt');
@@ -99,9 +102,8 @@ test('the first run replaces tokens, generates files and refuses to run twice', 
   } finally { cleanup(dir); }
 });
 
-test('a workers.dev address drops the custom-domain route, a missing account id drops that line', () => {
+test('a workers.dev address drops the custom-domain route, a missing account id and a missing R2 bucket drop their lines', () => {
   const c = example();
-  c.board.url = 'https://acme-portal-board.example-sub.workers.dev';
   const dir = setup(c);
   try {
     assert.equal(apply(dir, '--board-only').code, 0);
@@ -109,6 +111,7 @@ test('a workers.dev address drops the custom-domain route, a missing account id 
     assert.ok(!wrangler.includes('"routes"'));
     assert.match(wrangler, /"workers_dev": true/);
     assert.ok(!wrangler.includes('"account_id"'));
+    assert.ok(!wrangler.includes('r2_buckets'), 'no bucket configured: no R2 binding');
   } finally { cleanup(dir); }
 });
 

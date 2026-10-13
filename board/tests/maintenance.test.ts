@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -9,65 +7,7 @@ import worker from "../src/index.ts";
 import { COMMENT_ERRORS, commentBodyError } from "../public/board/comment-rules.js";
 import { boardUsage, insightPeriod, summarizeInsights } from "../cli/usage.mjs";
 import { expiredBackups, outsideRepo } from "../scripts/backup.mjs";
-import { AGENT_NAMES, LIMITED_AGENTS } from "../src/agents.ts";
-
-// The agents come from src/agents.ts, so these tests keep passing after the
-// project's own roles replace the placeholders: LEAD and DEV have full rights
-// (the same one when only one agent does), OTHER is any second agent, QA is the
-// limited one (undefined when no role is limited).
-const FULL = AGENT_NAMES.filter((name) => !LIMITED_AGENTS.includes(name));
-const LEAD = FULL[0], DEV = FULL[1] ?? FULL[0];
-const OTHER = AGENT_NAMES.find((name) => name !== DEV)!;
-const QA = LIMITED_AGENTS[0];
-assert.ok(LEAD && AGENT_NAMES.length >= 2, "these tests need at least two agents in src/agents.ts, one with full rights");
-const keyOf = (name: string) => `test-key-${name}-`.repeat(4); // a key is at least 32 characters
-
-function database() {
-  const sqlite = new DatabaseSync(":memory:");
-  for (const file of readdirSync(new URL("../migrations/", import.meta.url)).sort())
-    sqlite.exec(readFileSync(new URL("../migrations/" + file, import.meta.url), "utf8"));
-  sqlite.exec("INSERT INTO cards(no,col,title,created_at,updated_at) VALUES (1,'backlog','test','2026-10-03T00:00:00Z','2026-10-03T00:00:00Z')");
-  sqlite.exec("INSERT INTO column_counts(project_id,col,n) VALUES (1,'backlog',1)");
-  const queries: string[] = [];
-  class Statement {
-    sql: string;
-    values: SQLInputValue[];
-    constructor(sql: string, values: SQLInputValue[] = []) { this.sql = sql; this.values = values; queries.push(sql); }
-    bind(...values: SQLInputValue[]) { return new Statement(this.sql, values); }
-    rows() {
-      const statement = sqlite.prepare(this.sql);
-      // D1 bind() accepts positional values for numbered SQLite parameters;
-      // node:sqlite treats ?1 as named, so adapt the binding, not the query.
-      return /\?\d+/.test(this.sql)
-        ? statement.all(Object.fromEntries(this.values.map((value, i) => [`?${i + 1}`, value])))
-        : statement.all(...this.values);
-    }
-    async first(column?: string) {
-      const row = this.rows()[0];
-      return row ? (column ? row[column] : row) : null;
-    }
-    async all() { return { results: this.rows(), success: true }; }
-    async run() { this.rows(); return { success: true }; }
-  }
-  const DB = {
-    prepare: (sql: string) => new Statement(sql),
-    async batch(statements: Statement[]) {
-      sqlite.exec("BEGIN");
-      try {
-        // SQLite executes a transaction synchronously; do not interleave a
-        // second request while awaiting this in-memory adapter's statements.
-        const results = statements.map((statement) => ({ results: statement.rows(), success: true }));
-        sqlite.exec("COMMIT"); return results;
-      }
-      catch (error) { sqlite.exec("ROLLBACK"); throw error; }
-    },
-  };
-  const env = { DB, AGENT_KEYS: JSON.stringify(Object.fromEntries(AGENT_NAMES.map((name) => [name, keyOf(name)]))), OWNER_EMAILS: "owner@example.test", ENVIRONMENT: "development", FILES: {} } as unknown as Parameters<typeof worker.fetch>[1];
-  const request = (path: string, method = "GET", body?: unknown, author = DEV) => worker.fetch(new Request("http://localhost" + path, {
-    method, headers: { authorization: "Bearer " + keyOf(author), "content-type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}),
-  }), env);
-  return { sqlite, DB, request, env, queries };
-}
+import { database, DEV, LEAD, OTHER, QA } from "./support.ts";
 
 test("simultaneous posts admit exactly 60, keep unique IDs and counts, and isolate authors", async () => {
   const { sqlite, request } = database();
@@ -401,8 +341,8 @@ test("GET /api/info is public and gives the project name; without one it says Bo
     const ask = (e: typeof env) => worker.fetch(new Request("http://localhost/api/info"), e);
     const plain = await ask(env);
     assert.equal(plain.status, 200);
-    assert.deepEqual(await plain.json(), { projectName: "Board" });
+    assert.deepEqual(await plain.json(), { projectName: "Board", files: true });
     const named = await ask({ ...env, PROJECT_NAME: "Example Project" });
-    assert.deepEqual(await named.json(), { projectName: "Example Project" });
+    assert.deepEqual(await named.json(), { projectName: "Example Project", files: true });
   } finally { sqlite.close(); }
 });

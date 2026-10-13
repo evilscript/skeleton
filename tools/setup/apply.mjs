@@ -22,7 +22,7 @@ const SKIP_DIRS = new Set(['.git', 'node_modules', '.wrangler', '.skeleton']);
 // Files that describe the kit itself or hold the token names on purpose: never rewritten.
 const SKIP_FILES = new Set(['START_HERE.md', 'README.md', 'LICENSE', 'skeleton.config.json', 'skeleton.config.example.json']);
 const SKIP_PREFIXES = ['tools/setup/'];
-const BOARD_TOKENS = ['WORKER_NAME', 'CLOUDFLARE_ACCOUNT_ID', 'BOARD_HOST', 'D1_NAME', 'D1_ID', 'R2_BUCKET', 'TURNSTILE_SITE_KEY', 'GOOGLE_CLIENT_ID', 'OWNER_EMAILS'];
+const BOARD_TOKENS = ['WORKER_NAME', 'CLOUDFLARE_ACCOUNT_ID', 'BOARD_HOST', 'D1_NAME', 'D1_ID', 'R2_BUCKET', 'TURNSTILE_SITE_KEY'];
 
 const out = (...a) => console.log(...a);
 const args = process.argv.slice(2);
@@ -78,7 +78,7 @@ function validate(c) {
   const b = c.board || {};
   if (b.enabled) {
     need(str(b.url) && /^https:\/\/[^/\s]+\/?$/.test(b.url), 'board.url must be an https address such as https://board.example.com');
-    for (const k of ['workerName', 'd1Name', 'r2Bucket', 'keychainService']) need(str(b[k]), `board.${k} is required when the board is enabled`);
+    for (const k of ['workerName', 'd1Name', 'keychainService']) need(str(b[k]), `board.${k} is required when the board is enabled`);
   }
   return errors;
 }
@@ -123,8 +123,6 @@ const boardTokens = {
   D1_ID: board.d1Id || '',
   R2_BUCKET: board.r2Bucket || '',
   TURNSTILE_SITE_KEY: board.turnstileSiteKey || '',
-  GOOGLE_CLIENT_ID: board.googleClientId || '',
-  OWNER_EMAILS: (board.ownerEmails || []).join(','),
   PROJECT_NAME: config.project.name,
 };
 
@@ -165,6 +163,8 @@ function boardFiles() {
     const { result, unknown } = render(readFileSync(tmplPath, 'utf8'), boardTokens, { json: true });
     if (unknown.size) throw new Error(`board/wrangler.jsonc.tmpl uses unknown tokens: ${[...unknown].join(', ')}`);
     let text = result;
+    // R2 is optional (it needs a payment card even on the free plan): no bucket, no binding
+    if (!board.r2Bucket) text = text.split('\n').filter((l) => !/^\s*"r2_buckets":/.test(l)).join('\n');
     // without an account id wrangler uses the account it is logged in to
     if (!board.cloudflareAccountId) text = text.split('\n').filter((l) => !/^\s*"account_id":/.test(l)).join('\n');
     if (host.endsWith('.workers.dev')) {
@@ -172,6 +172,7 @@ function boardFiles() {
       text = text.split('\n').filter((l) => !/^\s*"routes":/.test(l)).join('\n').replace(/"workers_dev":\s*false/, '"workers_dev": true');
     }
     write(join(ROOT, 'board', 'wrangler.jsonc'), text);
+    if (!board.r2Bucket) out('  note: no R2 bucket configured: card attachments, screenshots and feedback images are switched off.');
     if (!board.d1Id) out('  note: board.d1Id is empty. Create the database (npx wrangler d1 create <name>), put its id in the config and run this again with --board-only.');
   } else out('  (no board/wrangler.jsonc.tmpl here: skipped)');
   // agents.ts between its markers

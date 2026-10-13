@@ -14,11 +14,14 @@
   </head>
   <body>
     <div class="gate" id="gate" hidden>
-      <div class="box">
+      <form class="box" id="gate-form">
         <h1 id="gate-title">Board</h1>
-        <p id="gate-text">Sign in with your Google account.</p>
-        <div id="google-button"></div>
-      </div>
+        <p id="gate-text">Enter the owner key to open the board.</p>
+        <input class="field" type="password" id="gate-key" name="key" placeholder="Owner key" aria-label="Owner key" autocomplete="current-password" required />
+        <button class="btn primary" id="gate-submit" type="submit">Sign in</button>
+        <p class="hint">The Owner reads the key on their own machine with <code>node cli/board.mjs owner-key</code>.</p>
+        <div id="dev-signin"></div>
+      </form>
     </div>
 
     <div id="app" hidden>
