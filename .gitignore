@@ -1,0 +1,10 @@
+node_modules/
+.wrangler/
+.dev.vars
+.env*
+.DS_Store
+*.log
+board/backups/
+board/.wrangler-test-keys
+skeleton.local.json
+.claude/settings.local.json

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Board</title>
+    <link rel="icon" href="/board/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/board/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-title" content="Board" />
+    <script src="/board/theme.js"></script>
+    <link rel="stylesheet" href="/board/board.css" />
+    <script src="/board/board.js" type="module"></script>
+  </head>
+  <body>
+    <div class="gate" id="gate" hidden>
+      <div class="box">
+        <h1 id="gate-title">Board</h1>
+        <p id="gate-text">Sign in with your Google account.</p>
+        <div id="google-button"></div>
+      </div>
+    </div>
+
+    <div id="app" hidden>
+      <div class="top">
+        <h1>
+          <select id="project" aria-label="Project"></select>
+          <button class="btn small" id="projects-btn" title="Add a project, or rename one">Projects…</button>
+          <small id="total"></small>
+        </h1>
+        <div class="filters">
+          <input type="search" id="q" placeholder="Search number, title, description" aria-label="Search" />
+          <select id="f-assignee" aria-label="Assignee">
+            <option value="">Anyone</option>
+            <!-- the agents are filled in from /api/agents when the page starts (board.js) -->
+            <option value="owner">Owner</option>
+            <option value="none">Nobody</option>
+          </select>
+          <select id="f-priority" aria-label="Priority">
+            <option value="">All priorities</option>
+            <option value="blocker">Blocker</option>
+            <option value="critical">Critical</option>
+            <option value="major">Major</option>
+            <option value="minor">Minor</option>
+            <option value="none">None</option>
+          </select>
+          <select id="f-chip" aria-label="Chip"><option value="">All chips</option></select>
+          <button class="btn primary" id="new">New card</button>
+          <button class="btn" id="manage-chips">Manage chips</button>
+          <button class="btn" id="done-btn" title="Open the done cards; you can also drag a card here">Done</button>
+          <button class="btn" id="feed-btn" title="The conversation on the cards">Conversation</button>
+          <button class="btn" id="removed">Removed</button>
+        </div>
+        <span class="who" id="who"></span>
+        <button class="btn small" id="theme-btn" title="System, light or dark: click to switch">Theme</button>
+        <button class="btn small" id="logout">Sign out</button>
+      </div>
+      <main class="board" id="board"></main>
+      <aside class="float" id="done-panel" aria-label="Done" hidden></aside>
+    </div>
+
+    <dialog id="card-dlg"><form method="dialog" class="dlg" id="card-form"></form></dialog>
+    <dialog id="removed-dlg"><form method="dialog" class="dlg" id="removed-form"></form></dialog>
+    <dialog id="projects-dlg"><form method="dialog" class="dlg" id="projects-form"></form></dialog>
+    <dialog id="chips-dlg"><form method="dialog" class="dlg" id="chips-form"></form></dialog>
+    <dialog id="feed-dlg"><form method="dialog" class="dlg" id="feed-form"></form></dialog>
+    <dialog id="zoom-dlg" class="zoom"><form method="dialog"><button class="btn small" value="close">Close</button><img id="zoom-img" alt="" /></form></dialog>
+    <div class="toast" id="toast" hidden></div>
+  </body>
+</html>

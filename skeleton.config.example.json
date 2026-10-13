@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "project": {
+    "name": "Acme Portal",
+    "slug": "acme-portal",
+    "description": "A customer portal for Acme's support team.",
+    "kind": "web app"
+  },
+  "github": {
+    "owner": "acme-co",
+    "repo": "acme-portal",
+    "visibility": "private",
+    "defaultBranch": "main"
+  },
+  "owner": {
+    "name": "Jordan",
+    "boardName": "owner",
+    "timezone": "America/New_York",
+    "replyLanguage": "English"
+  },
+  "roles": [
+    {
+      "role": "lead",
+      "name": "Atlas",
+      "boardName": "agent-atlas",
+      "runtime": "Claude Code on the Owner's laptop",
+      "folder": "PM - Atlas"
+    },
+    {
+      "role": "developer",
+      "name": "Bolt",
+      "boardName": "agent-bolt",
+      "runtime": "Claude Code on a second machine",
+      "folder": "Dev - Bolt",
+      "branchPrefix": "agent-bolt/"
+    },
+    {
+      "role": "qa",
+      "name": "Check",
+      "boardName": "agent-check",
+      "runtime": "Claude Code on a test machine",
+      "folder": "QA - Check",
+      "limited": true
+    }
+  ],
+  "board": {
+    "enabled": true,
+    "host": "cloudflare",
+    "url": "https://board.example.com",
+    "defaultProject": "main",
+    "ownerEmails": ["jordan@example.com"],
+    "googleClientId": "",
+    "turnstileSiteKey": "",
+    "cloudflareAccountId": "",
+    "d1Id": "",
+    "d1Name": "acme-portal-board",
+    "r2Bucket": "acme-portal-board-files",
+    "workerName": "acme-portal-board",
+    "keychainService": "acme-portal-board"
+  },
+  "checks": {
+    "command": "npm test",
+    "minimumScope": "the tests that cover the files the change touches",
+    "fullSuite": "npm test"
+  },
+  "agentPolicy": {
+    "model": "the Owner's choice",
+    "maxSubagents": 3
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "board",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.14.0" },
+  "scripts": {
+    "dev": "wrangler dev --host localhost --local-upstream localhost --var ENVIRONMENT:development",
+    "check": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 migrations apply DB --local",
+    "db:remote": "wrangler d1 migrations apply DB --remote",
+    "setup:secrets": "bash scripts/setup-secrets.sh",
+    "backup": "node scripts/backup.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261001.1",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0",
+    "wrangler": "^4.145.0"
+  }
+}
