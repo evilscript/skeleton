@@ -91,7 +91,7 @@ When you have the answers, show **one summary table** and ask the Owner to confi
 
 ## 5. Link the GitHub repository
 
-1. Look at the remotes: `git remote -v`. If `origin` is the kit's repository, rename it so you can never push to it by accident: `git remote rename origin kit` (it stays available to pull future kit updates).
+1. Look at the remotes: `git remote -v`. If `origin` is the kit's repository, rename it so you can never push to it by accident: `git remote rename origin kit` (it stays available to pull future kit updates), and switch its push address off: `git remote set-url --push kit DISABLED-do-not-push-to-the-kit`. Only `git fetch kit` works from then on; nothing of this project is ever pushed to the kit.
 2. The project repository:
    - If it does not exist and the Owner said yes: `gh repo create <owner>/<repo> --private --source . --remote origin` (use `--public` when chosen). This creates a GitHub repository: you already asked in step 1.3.
    - If it exists: `git remote add origin https://github.com/<owner>/<repo>.git`.
