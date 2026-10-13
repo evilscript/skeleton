@@ -9,7 +9,7 @@ The board is a small program (a Cloudflare Worker with a database) in `board/`. 
 | nothing but an email address (the default) | `https://<worker name>.<your workers.dev name>.workers.dev` | free |
 | a domain whose DNS is on Cloudflare | `https://board.<your domain>` (set `board.url` to it) | free (the domain is yours) |
 
-No domain is needed. The `<worker name>` is `board.workerName` in `skeleton.config.json`. The `<your workers.dev name>` is a name you pick once for your Cloudflare account, on one page the agent gives you (`https://dash.cloudflare.com/<account id>/workers/onboarding`); Wrangler cannot choose it in an automated run. Put the final address in `board.url`; `node tools/setup/apply.mjs --board-only` then renders the Worker configuration (a `*.workers.dev` address needs no route).
+No domain is needed. The `<worker name>` is `board.workerName` in `skeleton.config.json`. The `<your workers.dev name>` is the free name of your Cloudflare account. The first deploy registers it for you (named after the project, `board.workersDevName`); the agent reads the real address from the deploy output and stores it with `node tools/setup/apply.mjs --set-board-url <address>`. Only if the automatic registration does not work, the agent sends you once to `https://dash.cloudflare.com/<account id>/workers/onboarding` to type a name.
 
 ## Who does what, once
 
@@ -17,7 +17,6 @@ No domain is needed. The `<worker name>` is `board.workerName` in `skeleton.conf
 |---|---|
 | Create the free Cloudflare account (https://dash.cloudflare.com/sign-up: email, password, confirm the email; no card, no domain) | **you** |
 | `npx wrangler login` in your own terminal (a browser opens, you approve) | **you** |
-| Choose the workers.dev name on the onboarding page | **you** |
 | `npm run setup:secrets` in your own terminal: you choose the board password at a hidden prompt (at least 12 characters, typed twice) | **you** |
 | Sign in to the board page with that password | **you** |
 | Everything else: install, create the database, write the configuration, tests, database migrations, deploy, check the agents' access, create the first card | the agent (one yes from you for the whole block) |

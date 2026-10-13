@@ -166,10 +166,52 @@ test('a workers.dev address drops the custom-domain route, a missing account id 
     assert.equal(apply(dir, '--board-only').code, 0);
     const wrangler = readFileSync(join(dir, 'board', 'wrangler.jsonc'), 'utf8');
     assert.match(wrangler, /"FILE_STORAGE": "d1"/);
+    // wrangler names the account's free address after the board's package, so that carries the project's name
+    assert.equal(JSON.parse(readFileSync(join(dir, 'board', 'package.json'), 'utf8')).name, 'acme-portal');
+    const lock = JSON.parse(readFileSync(join(dir, 'board', 'package-lock.json'), 'utf8'));
+    assert.equal(lock.name, 'acme-portal');
+    assert.equal(lock.packages[''].name, 'acme-portal');
     assert.ok(!wrangler.includes('"routes"'));
     assert.match(wrangler, /"workers_dev": true/);
     assert.ok(!wrangler.includes('"account_id"'));
     assert.ok(!wrangler.includes('r2_buckets'), 'd1 storage: no R2 binding');
+  } finally { cleanup(dir); }
+});
+
+test('the real address is set after the first deploy: documents, config and board files follow', () => {
+  const c = example();
+  c.board.url = 'https://acme-portal-board.setup-pending.workers.dev';
+  const dir = setup(c);
+  try {
+    assert.equal(apply(dir).code, 0);
+    assert.match(readFileSync(join(dir, 'AGENTS.md'), 'utf8') + readFileSync(join(dir, 'README.md'), 'utf8') + readFileSync(join(dir, 'docs', 'CONSTITUTION.md'), 'utf8'), /setup-pending/);
+    const r = apply(dir, '--set-board-url', 'https://acme-portal-board.acme.workers.dev/');
+    assert.equal(r.code, 0, r.err + r.out);
+    for (const f of ['AGENTS.md', 'README.md', 'docs/CONSTITUTION.md', 'docs/ONBOARDING.md']) {
+      const text = readFileSync(join(dir, f), 'utf8');
+      assert.ok(!text.includes('setup-pending'), `${f} still has the placeholder address`);
+    }
+    assert.equal(JSON.parse(readFileSync(join(dir, 'skeleton.config.json'), 'utf8')).board.url, 'https://acme-portal-board.acme.workers.dev');
+    assert.match(readFileSync(join(dir, 'README.md'), 'utf8'), /acme-portal-board\.acme\.workers\.dev/);
+    assert.match(readFileSync(join(dir, 'board', 'wrangler.jsonc'), 'utf8'), /"workers_dev": true/);
+    // a bad address is refused and changes nothing
+    assert.equal(apply(dir, '--set-board-url', 'http://nope').code, 2);
+    // a different name for the account's free address is one config field and a board-only run
+    const cfg = JSON.parse(readFileSync(join(dir, 'skeleton.config.json'), 'utf8'));
+    cfg.board.workersDevName = 'acme-portal-x7k2';
+    writeFileSync(join(dir, 'skeleton.config.json'), JSON.stringify(cfg, null, 2));
+    assert.equal(apply(dir, '--board-only').code, 0);
+    assert.equal(JSON.parse(readFileSync(join(dir, 'board', 'package.json'), 'utf8')).name, 'acme-portal-x7k2');
+  } finally { cleanup(dir); }
+});
+
+test('a custom domain leaves the board package name alone', () => {
+  const c = example();
+  c.board.url = 'https://board.example.com';
+  const dir = setup(c);
+  try {
+    assert.equal(apply(dir, '--board-only').code, 0);
+    assert.equal(JSON.parse(readFileSync(join(dir, 'board', 'package.json'), 'utf8')).name, 'board');
   } finally { cleanup(dir); }
 });
 

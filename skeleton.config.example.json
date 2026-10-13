@@ -61,6 +61,7 @@
     "fileStorage": "d1",
     "r2Bucket": "",
     "workerName": "acme-portal-board",
+    "workersDevName": "acme-portal",
     "keychainService": "acme-portal-board"
   },
   "checks": {

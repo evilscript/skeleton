@@ -6,11 +6,14 @@
 //   node tools/setup/apply.mjs --refresh        any time: regenerate only the generated files from the config
 //                                               (docs/TEAM.md, board/src/agents.ts, board/wrangler.jsonc, member folders,
 //                                               the member block of .gitignore). Safe to repeat after editing the config.
-//   node tools/setup/apply.mjs --board-only     regenerate only board/wrangler.jsonc and board/src/agents.ts
+//   node tools/setup/apply.mjs --board-only     regenerate only board/wrangler.jsonc, board/src/agents.ts and the board's package name
+//   node tools/setup/apply.mjs --set-board-url <https-address>   the board's real address is known after the first deploy: store it in the
+//                                               config, replace the placeholder address in the documents, regenerate the board files
 //   node tools/setup/apply.mjs --check          validate the config and print what is wrong; changes nothing
 //   options: --config <file> (default skeleton.config.json), --force (allow a second first-run), --help
 //
 // Node built-ins only. It never reads or writes a credential: the config holds only public identifiers.
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
@@ -84,6 +87,7 @@ function validate(c) {
   if (b.enabled) {
     need(str(b.url) && /^https:\/\/[^/\s]+\/?$/.test(b.url), 'board.url must be an https address such as https://board.example.com');
     for (const k of ['workerName', 'd1Name', 'keychainService']) need(str(b[k]), `board.${k} is required when the board is enabled`);
+    need(b.workersDevName === undefined || (typeof b.workersDevName === 'string' && /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(b.workersDevName)), 'board.workersDevName must be lowercase letters, digits and hyphens');
     if (b.fileStorage !== undefined) need(FILE_STORAGE_MODES.includes(b.fileStorage), `board.fileStorage must be one of ${FILE_STORAGE_MODES.join(', ')}`);
     need(fileStorageOf(b) !== 'r2' || str(b.r2Bucket), 'board.fileStorage "r2" needs board.r2Bucket (the bucket name)');
   }
@@ -109,6 +113,7 @@ const checks = config.checks || {};
 const languages = config.languages || {};
 const fileStorage = fileStorageOf(board);
 const boardLanguage = languages.boardPages || 'en';
+const workersDevName = board.workersDevName || slug;
 const host = board.enabled ? new URL(board.url).host : '';
 const tokens = {
   PROJECT_NAME: config.project.name,
@@ -190,6 +195,9 @@ function boardFiles() {
       text = text.split('\n').filter((l) => !/^\s*"routes":/.test(l)).join('\n').replace(/"workers_dev":\s*false/, '"workers_dev": true');
     }
     write(join(ROOT, 'board', 'wrangler.jsonc'), text);
+    // Wrangler registers a free workers.dev name for a new account by itself when an AI agent runs the first deploy, and it takes the
+    // name from the package name of the folder it runs in: so that package is named after the project, not "board".
+    if (host.endsWith('.workers.dev')) setPackageName(workersDevName);
     if (fileStorage === 'none') out('  note: file storage is "none": card attachments and screenshots are switched off.');
     if (fileStorage === 'd1') out('  note: file storage is "d1": files are kept in the board database (small images only; no extra service).');
     if (!existsSync(join(ROOT, 'board', 'public', 'i18n', `${boardLanguage}.json`))) out(`  note: no language pack board/public/i18n/${boardLanguage}.json yet: copy en.json to it and translate the values (the pages fall back to English until then).`);
@@ -206,6 +214,17 @@ function boardFiles() {
     const list = config.roles.map((r) => `  { name: ${JSON.stringify(r.boardName)}, label: ${JSON.stringify(r.name)}, limited: ${r.limited || r.role === 'qa' ? 'true' : 'false'} },`).join('\n');
     const body = `export const AGENT_LIST = [\n${list}\n] as const;\nexport const OWNER_ASSIGNEE = { name: ${JSON.stringify(ownerBoard)}, label: ${JSON.stringify(config.owner.name)} } as const;\n`;
     write(agentsPath, text.slice(0, beginLineEnd) + body + text.slice(end));
+  }
+}
+
+// Renames the board's npm package in package.json and package-lock.json (line edits: the files keep their formatting).
+function setPackageName(name) {
+  for (const [file, times] of [['package.json', 1], ['package-lock.json', 2]]) {
+    const path = join(ROOT, 'board', file);
+    if (!existsSync(path)) continue;
+    let n = 0;
+    const text = readFileSync(path, 'utf8').replace(/^(\s*)"name": "[^"]*"/gm, (m, ws) => (++n <= times ? `${ws}"name": ${JSON.stringify(name)}` : m));
+    write(path, text);
   }
 }
 
@@ -250,7 +269,35 @@ const refresh = flag('--refresh');
 const boardOnly = flag('--board-only');
 const marker = join(ROOT, '.skeleton', 'applied.json');
 
-if (boardOnly) {
+const setBoardUrl = opt('--set-board-url', '');
+
+if (setBoardUrl) {
+  if (!/^https:\/\/[^/\s]+\/?$/.test(setBoardUrl)) { console.error('--set-board-url needs an https address such as https://acme-board.acme.workers.dev'); process.exit(2); }
+  const next = setBoardUrl.replace(/\/$/, '');
+  const old = (board.url || '').replace(/\/$/, '');
+  if (!board.enabled) { console.error('The board is not enabled in the config.'); process.exit(2); }
+  out(`Setting the board address to ${next}:`);
+  if (old && old !== next) {
+    let replaced = 0;
+    for (const file of walk(ROOT)) {
+      const rel = relative(ROOT, file).split(sep).join('/');
+      const name = rel.split('/').pop();
+      const ext = name.includes('.') ? '.' + name.split('.').pop() : '';
+      if (!TEXT_EXT.has(ext) || rel === 'skeleton.config.json' || rel === 'skeleton.config.example.json') continue;
+      const text = readFileSync(file, 'utf8');
+      if (!text.includes(old)) continue;
+      replaced++;
+      write(file, text.split(old).join(next));
+    }
+    out(`  address replaced in ${replaced} file(s)`);
+  }
+  config.board.url = next;
+  write(configPath, JSON.stringify(config, null, 2) + '\n');
+  if (!dryRun) {
+    const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--board-only', '--config', configPath], { stdio: 'inherit' });
+    if (r.status) process.exit(r.status);
+  }
+} else if (boardOnly) {
   out('Regenerating the board files:');
   boardFiles();
 } else if (refresh) {
@@ -313,4 +360,4 @@ This project is run by one human Owner (${config.owner.name}) and a small team o
 }
 
 out(dryRun ? `Dry run: ${written.length} file(s) would change.` : `Done: ${written.length} file(s) written.`);
-if (!dryRun && !refresh && !boardOnly) out('Next: fill the TODO(first-run) places (grep -rn "TODO(first-run)" docs AGENTS.md), then commit and push (START_HERE.md, steps 5 to 8).');
+if (!dryRun && !refresh && !boardOnly && !setBoardUrl) out('Next: fill the TODO(first-run) places (grep -rn "TODO(first-run)" docs AGENTS.md), then commit and push (START_HERE.md, steps 5 to 8).');
