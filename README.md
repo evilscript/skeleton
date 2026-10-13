@@ -42,7 +42,7 @@ flowchart LR
    ```
 2. Create a free Cloudflare account (https://dash.cloudflare.com/sign-up: an email address, no card, no domain). This is the one account you create yourself.
 3. Open the folder in your AI tool (Claude Code, Codex, ...) and say: **"Read START_HERE.md and set this project up."**
-4. Answer the questions (about 25, with defaults; languages, GitHub, team, folders, board). The agent writes `skeleton.config.json`, applies it, links your GitHub repository, and deploys the board to your own Cloudflare account. You only do four short things yourself: log in to Cloudflare, choose a name for your free address, choose the board password, and sign in.
+4. Answer five questions (project, you, team size, checks, anything else). The agent proposes every other value, names included, in one summary table; your yes to it covers everything in it. It then writes `skeleton.config.json`, applies it, creates and links your private GitHub repository, and deploys the board to your own Cloudflare account. You only do four short things yourself: log in to Cloudflare, type a name for your free address, choose the board password, and sign in.
 
 You run every login and every command that creates a secret yourself, in your own terminal. Agents are told never to ask for, store or print a credential, and your board password is never typed into the chat.
 
