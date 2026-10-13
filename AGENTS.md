@@ -26,6 +26,9 @@ These are the defaults. The Owner's own words always win, and `docs/CONSTITUTION
   title), a ticket is `#34 - Fix login redirect`. Between members on a card the short form is fine.
 - Make small implementation decisions independently and say what you decided. Ask about real product decisions, giving a
   recommendation. Do not assume what the Owner meant: when the Owner's words can be read two ways and the choice matters, ask the Owner.
+- **Ask the Owner on the board, not in the chat.** A question for the Owner is a comment on the card it belongs to, with a recommendation:
+  `node tools/board.mjs comment <card> "..." --to {{OWNER_BOARD_NAME}} --type question` (no fitting card: create one first). In the chat you may
+  only say that a question is waiting, with the card's number and title (`docs/CONSTITUTION.md` section 3 rule 21).
 - Never ask the Owner, or anyone, to supply tokens, passwords or keys. Use the tools that are already signed in. If a tool needs a
   credential it does not have, say so and stop.
 - GitHub commits and pushes of your own branch are routine development. Publish a version, tag a release or deploy only when the

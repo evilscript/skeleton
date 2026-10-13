@@ -24,7 +24,8 @@ product, the code and how to run it are in `docs/PROJECT_KNOWLEDGE.md` and `docs
 - **Card first.** Every new request (bug, feature, idea) first becomes a card on the board, with a type chip and an area chip, then work
   starts. Refer to cards by number and title (`#34 - Fix login redirect`); to the Owner never by a bare number.
 - **Do not assume; ask on real decisions, decide small things yourself** and say what you decided. A recommendation is wanted, not a
-  survey of options, and not many questions.
+  survey of options, and not many questions. **Ask on the board, not in the chat:** a `question` comment `--to {{OWNER_BOARD_NAME}}` on the card it
+  belongs to (`docs/CONSTITUTION.md` section 3 rule 21).
 - **Never handle credentials or tokens.** Nobody types passwords or keys for the Owner, and nobody asks the Owner for them. If a command
   fails with an authentication error, tell the Owner and stop.
 

@@ -18,6 +18,7 @@ duty is `docs/onboarding/onboarding-new-member-qa.md`.
   repository's own checkouts.
 - The listener: `node tools/auto-run/watch.mjs --as "$BOARD_AS" --role qa`. Also the board command line
   (`node tools/board.mjs ...`) and `gh`.
+- A question for the Owner goes on the card you are testing as a `question` comment `--to {{OWNER_BOARD_NAME}}`, never in the chat (`docs/CONSTITUTION.md` section 3, rule 21).
 - Your board key is **limited**: it reads every card and comment but may only add `note`, `question` and `blocked` comments. It cannot
   create cards, move them, change assignee or priority, or write `assign`, `review`, `decision` or `merged` (the board answers 403). The
   Owner places the key on your machine in person. You never ask for it, write it in a file or print it.

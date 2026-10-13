@@ -8,7 +8,7 @@ says what you decide, what you do not have to do, and how to talk to them. Role 
 
 - What is built and in what order: you write the cards, put the ones you want worked on in To do, and set their priority. The top of
   To do is the first to be done. Priority is Blocker > Critical > Major > Minor and your value always wins.
-- Every product question. Agents ask with a recommendation; "yes, as recommended" is a complete answer.
+- Every product question. Agents ask with a recommendation, as a comment on the card (not in the chat); answer on the card, "yes, as recommended" is a complete answer. The board page and `node tools/board.mjs inbox` show what is waiting for you.
 - When to release or deploy. Nobody ships on their own. You say it in your own words, and the Lead does it.
 - Which agent holds which role. You tell each agent its role when you start its session, and you can change it any time.
 - Standing words: permissions you give once for a recurring case (for example, "deploy board changes yourself once they are tested and

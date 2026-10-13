@@ -76,7 +76,7 @@ or repositories without the Owner's explicit word in chat. Reopen a card the Own
 | `review` | a Developer | headed "Lead review": ready to merge, or changes needed |
 | `merged` | a Developer | after the merge: what changed, what to watch |
 | `decision` | a Developer | a short answer about code or process; not a product discussion |
-| `question` | the Owner | a real product choice, with a recommendation; or an unclear card |
+| `question` | the Owner | a real product choice, with a recommendation; or an unclear card. Always on the card, never only in the chat (`docs/CONSTITUTION.md` section 3, rule 21) |
 | `note` | anyone | information that needs no answer; a setting-or-already-works answer to the Owner on a card |
 
 After posting, check that `board thread <card>` shows it (L1). No answer in 30 minutes: read the thread before blaming anyone; two hours:

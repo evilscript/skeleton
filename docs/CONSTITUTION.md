@@ -118,8 +118,8 @@ Standing rules of the project, each with its reason. They change only with the O
 17. **A card that is not clear is asked about, not guessed.** The Lead reads a new card as soon as the listener shows it, with one of
     three outcomes. (a) Clear and workable (a bug with enough to find it, a request with one reading) and in `todo`: the Lead hands it
     out in the same minute. (b) Not clear (two readings that give different results, a missing step to reproduce, a product choice): the
-    card stays in `backlog` or `todo`, the Lead writes a `question` to the Owner on the card with a recommendation and tells the Owner in
-    chat at once, and hands nothing out until the Owner has answered. (c) A request that is really a setting or already works: the Lead
+    card stays in `backlog` or `todo`, the Lead writes a `question` to the Owner on the card with a recommendation (rule 21), and hands
+    nothing out until the Owner has answered on the card. (c) A request that is really a setting or already works: the Lead
     answers on the card with where to change it and leaves the card for the Owner. The Lead never moves a card the Owner moved, never
     reopens a done one and never sets `progress`.
 18. **A card whose QA fails goes round again.** When the Owner comments what to change and moves the card to `progress`, that is a
@@ -135,6 +135,14 @@ Standing rules of the project, each with its reason. They change only with the O
     reviewed, tested and merged; running the full suite and deploying when everything is on `{{DEFAULT_BRANCH}}` while the Owner is
     asleep. A migration always gets a backup first. A standing word never covers a release of the product itself.
     - Standing words granted: none yet. The Lead adds a line here, in the Owner's meaning, when the Owner grants one.
+21. **Questions to the Owner are asked on the board, not in the chat.** Any agent that has a question for the Owner (a product choice, an
+    unclear card, a missing fact, a decision that is not its own) posts it as a comment on the card it belongs to:
+    `node tools/board.mjs comment <card> "<the question, short, with your recommendation>" --to {{OWNER_BOARD_NAME}} --type question`.
+    If no card fits, make one first (`board new`, type chip and area chip) and ask there. The question stands on the board until the Owner
+    answers it there, so it is not lost with a chat window and every other agent can read the answer. In the chat an agent may say that
+    a question is waiting, with the card's number and title, and nothing more; it does not put the question itself there and does not wait
+    for an answer in the chat. Exceptions: the first-run interview in `START_HERE.md` (the board does not exist yet), and an answer to
+    something the Owner asks in the chat.
 
 ## 4. The board
 

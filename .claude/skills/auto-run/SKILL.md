@@ -182,7 +182,7 @@ nothing or one short line when something was handled.
 - **`[card] new ...`, `moved ... -> todo`, `assignee ...`, `priority ...`** (a card in To do or In progress; a new card in backlog is
   silent: nobody starts it until the Owner moves it to To do): **triage at once.**
   - A card that is **not clear** (two readings with different results, no way to reproduce, a product choice): a `question` to the Owner
-    on the card with your recommendation, tell the Owner in chat at once, and hand nothing out until he answers. A request that is
+    on the card with your recommendation (`docs/CONSTITUTION.md` section 3 rule 21: questions go on the board, not in the chat), and hand nothing out until he answers there. A request that is
     really a setting or already works: answer on the card (`--to {{OWNER_BOARD_NAME}} --type note`, where to change it).
   - The Owner's own cards: ignore; never move them or comment-assign them. An unassigned card: code to a Developer by load, unless the
     Owner dedicated one; research, release and data to the Lead; what needs the Owner's data or decision stays with the Owner, with a

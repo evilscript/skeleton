@@ -33,6 +33,7 @@ testing. Do not stop to ask, and do not discuss requirements on the board.
   submitted": the Lead starts the review and QA starts testing from it, so the link must be complete. Write `review` again after a rework,
   saying what changed.
 - Resolves its own pull request's conflicts with `{{DEFAULT_BRANCH}}` and says so on the card.
+- A question for the Owner is asked on the card as a `question` comment `--to {{OWNER_BOARD_NAME}}`, never in the chat (`docs/CONSTITUTION.md` section 3, rule 21).
 - Reports by comment: `started`, `review`, `question` (with options), `blocked` (a technical blocker such as environment, permission or
   conflict). Reads the replies: `decision` and the Lead's "Lead review".
 - May use sub-agents on its own cards, as few as the job needs and never more than `agentPolicy.maxSubagents` in `skeleton.config.json`,
