@@ -5,7 +5,8 @@ technical reference) before touching code. This file is the "how we work" part; 
 
 Project-wide instructions for every agent are in [`AGENTS.md`](../AGENTS.md), the rules in [`CONSTITUTION.md`](CONSTITUTION.md), the
 dated project map in [`PROJECT_KNOWLEDGE.md`](PROJECT_KNOWLEDGE.md), the repository workflow in [`GIT_WORKFLOW.md`](GIT_WORKFLOW.md) and
-the roster in [`TEAM.md`](TEAM.md).
+the roster in [`TEAM.md`](TEAM.md). How a card moves between statuses, and the conditions a card can be in inside one status, is in
+[`BOARD_WORKFLOW.md`](BOARD_WORKFLOW.md): read it before you touch the board.
 
 ## 1. What the project is
 

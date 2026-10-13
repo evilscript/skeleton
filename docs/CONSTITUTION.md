@@ -152,7 +152,7 @@ lives at {{BOARD_URL}}. The command line is `node tools/board.mjs <command>`; it
 **Card.** Cards are numbered by the board, and the numbers are global across projects. Card first: every new request has a card before
 work starts. A bug in a shipped feature goes on that feature's card; a release gets none.
 
-**Chips.** Every card that is handed out has exactly one type (`Bug` or `Feature`) and one area; add what is missing, never remove.
+**Chips.** Every card that is handed out has exactly one type (`Bug` or `Feature`) and one area; add what is missing, never remove. The only chips that are removed are the three condition chips of `docs/BOARD_WORKFLOW.md` (`Blocked`, `Waiting for the Owner`, `Sent back`).
 
 **Priority.** `blocker`, `critical`, `major`, `minor`, or empty (section 3, rule 7).
 
@@ -163,7 +163,7 @@ the Lead asks the Owner for its name and its role every time (never makes either
 Keychain in person, section 2 rule 2; no agent ever handles a key) and points it at the onboarding document of its role in `docs/onboarding/`. Which agent holds which role is the
 Owner's current assignment, not part of this document.
 
-**Statuses, columns and who moves a card.** A card has a status (the `status` field; the specification is `board/docs/STATUSES.md`).
+**Statuses, columns and who moves a card.** The full move rules (each move with its who, its fact and its trace, the moves nobody makes, and the conditions a card can be in inside one status) are in `docs/BOARD_WORKFLOW.md`; the table below is the short form. A card has a status (the `status` field; the specification is `board/docs/STATUSES.md`).
 The stored column follows the status. The board page shows some columns split further, one bordered layer per status.
 
 | Stored column | Status (slug, label) | Meaning | Set by |
@@ -187,7 +187,7 @@ than these ten (`board/docs/STATUSES.md`).
 **The same minute (the Lead's duty).** A card's status follows the fact in the same minute and the same command batch as the action that
 made it true; nobody has to remind the Lead. The moves: a pull request arrives, so `pr_review`; the Lead merges, so `on_main` (a board
 change that is deployed at once goes to `on_prod_qa`); a release is tagged or a deploy is done, so every `on_main` card in it goes to
-`on_prod_qa` (read `board list --status on_main` first, L15); the Owner reports a failure in chat, so the card goes back to `progress`;
+`on_prod_qa` (read `board list --status on_main` first, L15); the Owner reports a failure (a comment on the card, or the move himself), so the card goes back to `progress`;
 a card in progress or merged also carries one type chip and one area chip (`board chip`). The mechanical check is the Lead listener's
 `[status]` lines (`tools/auto-run/watch.mjs --role lead`): an open pull request whose card is not PR reviewing, a merged one whose card
 is not On Main, an `on_main` card that is already released or deployed. They are repeated while the mismatch stands, and `--audit`
@@ -373,6 +373,7 @@ Owner; nothing was released.
 - `AGENTS.md`: instructions every agent loads
 - `docs/DEVELOPING.md`: code, checks, the release procedure
 - `docs/ONBOARDING.md`, `docs/GIT_WORKFLOW.md`, `docs/PROJECT_KNOWLEDGE.md`, `docs/TEAM.md` (generated roster)
+- `docs/BOARD_WORKFLOW.md`: the move rules for statuses and the conditions inside a status
 - `docs/roles/`: one file per role; `docs/onboarding/`: one onboarding document per role
 - `.claude/skills/auto-run/`: both modes and the PM brief; `.claude/skills/board-listen/`: the listening playbook
 - `tools/auto-run/watch.mjs`: the board listener for every agent

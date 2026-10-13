@@ -29,7 +29,7 @@ PR submitted (`pr_review`, `spike_ready`, `on_main`), Ready for QA (`probe_neede
 
 ## Who moves a card
 
-The project's constitution (`docs/CONSTITUTION.md`, the board protocol) is the authority; in short:
+The project's constitution (`docs/CONSTITUTION.md`, the board protocol) is the authority, and `docs/BOARD_WORKFLOW.md` lists every move with its who, its fact and its trace, and the conditions inside a status; in short:
 
 - The Owner moves backlog to `todo`, and every card to `done` or `qa_later`.
 - The Lead hands a `todo` card out with an `assign` comment (the card stays `todo`).

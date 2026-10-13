@@ -29,7 +29,7 @@ card whose field is empty (written in the `assign` comment, never in the Owner's
   fast-forwards `{{DEFAULT_BRANCH}}`; then the `merged` comment and On Main. Documentation-only changes merge without checks. On a
   failure find whose it is (plain `{{DEFAULT_BRANCH}}` against the batch); small fixes are yours, otherwise the pull request goes back
   to its Developer.
-- **Keep the statuses true**, in the same minute as the fact (`docs/CONSTITUTION.md` section 4). Before every report to the Owner run the
+- **Keep the statuses true**, in the same minute as the fact (`docs/CONSTITUTION.md` section 4; every move, who makes it and the conditions inside a status: `docs/BOARD_WORKFLOW.md`). Before every report to the Owner run the
   audit: `node tools/auto-run/watch.mjs --as <identity> --role lead --audit` must report no mismatch.
 - **Release and deploy**, only on the Owner's word (`docs/CONSTITUTION.md` section 7 and the release procedure in
   `docs/DEVELOPING.md`): the full suite on the release tree first; afterwards move the released cards from On Main to On Prod for QA

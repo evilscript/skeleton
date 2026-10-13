@@ -10,8 +10,8 @@
 ## Read first
 
 Read `docs/CONSTITUTION.md` (roles, non-negotiables, working agreements, the board protocol, the two modes, lessons), then
-`docs/ONBOARDING.md`, your role file in `docs/roles/` (`owner.md`, `lead.md`, `developer.md` or `qa.md`) and `docs/DEVELOPING.md`, before
-changing code. `docs/PROJECT_KNOWLEDGE.md` is the project map and a dated hand-off; `docs/GIT_WORKFLOW.md` records the repository setup and
+`docs/ONBOARDING.md`, your role file in `docs/roles/` (`owner.md`, `lead.md`, `developer.md` or `qa.md`), `docs/BOARD_WORKFLOW.md` (who moves a
+card when, and the conditions inside a status) and `docs/DEVELOPING.md`, before changing code. `docs/PROJECT_KNOWLEDGE.md` is the project map and a dated hand-off; `docs/GIT_WORKFLOW.md` records the repository setup and
 the daily Git workflow; `docs/TEAM.md` is the roster (who holds which role).
 Check the current working tree, remote state and relevant board cards each time; a hand-off snapshot is not live state.
 
@@ -79,7 +79,7 @@ ask. The full role definitions are `docs/CONSTITUTION.md` section 1 and `docs/ro
   `[card] moved ... -> todo`, and the Lead reads the card, asks the Owner if it is not clear, or hands it out. A card in Backlog is silent: nothing starts
   from there. The listener lives only as long as the session; re-arm it on every expiry and list To do by hand once after a re-arm.
 - A card has one of ten statuses (`backlog todo progress pr_review on_main spike_ready probe_needed on_prod_qa qa_later
-  done`; `docs/CONSTITUTION.md` section 4, `board/docs/STATUSES.md`). The Owner puts a card in To do when work should start; the Lead
+  done`; `docs/CONSTITUTION.md` section 4, `board/docs/STATUSES.md`; the move rules and the conditions inside a status: `docs/BOARD_WORKFLOW.md`). The Owner puts a card in To do when work should start; the Lead
   hands it out and the card stays in To do; the Developer moves it
   to In progress when it starts; the Lead sets PR reviewing when the pull request arrives, On Main at the merge and On Prod for QA at the
   release or deploy; the Owner moves cards to done after testing.
