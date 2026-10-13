@@ -63,7 +63,7 @@ for (const p of open) P(`- PR #${p.number} ${short(p.title, 56)} (${p.headRefNam
 let cards;
 try { cards = await board(['list']); } catch (e) { die(e.message); }
 const live = cards.filter((c) => c.status !== 'done');
-const ORDER = [['todo', 'To do (waiting for a start)'], ['progress', 'In progress'], ['pr_review', 'PR reviewing'], ['on_main', 'On Main (not released yet)'], ['spike_ready', 'Spike report ready'], ['probe_needed', 'Owner check needed'], ['on_prod_qa', 'On Prod for QA (the Owner tests)'], ['qa_later', 'QA later'], ['feedback', 'Feedback'], ['backlog', 'Backlog (nobody started)']];
+const ORDER = [['todo', 'To do (waiting for a start)'], ['progress', 'In progress'], ['pr_review', 'PR reviewing'], ['on_main', 'On Main (not released yet)'], ['spike_ready', 'Spike report ready'], ['probe_needed', 'Owner check needed'], ['on_prod_qa', 'On Prod for QA (the Owner tests)'], ['qa_later', 'QA later'], ['backlog', 'Backlog (nobody started)']];
 P('\n## Cards');
 for (const [st, label] of ORDER) {
 	const list = live.filter((c) => c.status === st);
@@ -73,7 +73,7 @@ for (const [st, label] of ORDER) {
 
 // waiting for the Owner: the last comment on a live card is an agent's question to the Owner
 const waiting = [];
-for (const c of live.filter((x) => !['backlog', 'feedback'].includes(x.status))) {
+for (const c of live.filter((x) => x.status !== 'backlog')) {
 	let thread = [];
 	try { thread = await board(['thread', String(c.no)]); } catch { continue; }
 	const last = thread[thread.length - 1];

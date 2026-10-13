@@ -22,7 +22,8 @@ const SKIP_DIRS = new Set(['.git', 'node_modules', '.wrangler', '.skeleton']);
 // Files that describe the kit itself or hold the token names on purpose: never rewritten.
 const SKIP_FILES = new Set(['START_HERE.md', 'README.md', 'LICENSE', 'skeleton.config.json', 'skeleton.config.example.json']);
 const SKIP_PREFIXES = ['tools/setup/'];
-const BOARD_TOKENS = ['WORKER_NAME', 'CLOUDFLARE_ACCOUNT_ID', 'BOARD_HOST', 'D1_NAME', 'D1_ID', 'R2_BUCKET', 'TURNSTILE_SITE_KEY'];
+const BOARD_TOKENS = ['WORKER_NAME', 'CLOUDFLARE_ACCOUNT_ID', 'BOARD_HOST', 'D1_NAME', 'D1_ID', 'R2_BUCKET', 'FILE_STORAGE', 'BOARD_LANGUAGE'];
+const FILE_STORAGE_MODES = ['none', 'd1', 'r2'];
 
 const out = (...a) => console.log(...a);
 const args = process.argv.slice(2);
@@ -43,6 +44,10 @@ let config;
 try { config = JSON.parse(readFileSync(configPath, 'utf8')); } catch (e) { console.error(`${configPath} is not valid JSON: ${e.message}`); process.exit(2); }
 
 // ------------------------------------------------------------------------------------------------ validation
+// Where card attachments and screenshots are kept: nowhere ("none"), in the board's own database ("d1"), or in an R2 bucket ("r2").
+// Older configs only had r2Bucket: a bucket name means r2, no name means none.
+const fileStorageOf = (b) => b.fileStorage || (b.r2Bucket ? 'r2' : 'none');
+
 function validate(c) {
   const errors = [];
   const need = (cond, msg) => { if (!cond) errors.push(msg); };
@@ -79,7 +84,12 @@ function validate(c) {
   if (b.enabled) {
     need(str(b.url) && /^https:\/\/[^/\s]+\/?$/.test(b.url), 'board.url must be an https address such as https://board.example.com');
     for (const k of ['workerName', 'd1Name', 'keychainService']) need(str(b[k]), `board.${k} is required when the board is enabled`);
+    if (b.fileStorage !== undefined) need(FILE_STORAGE_MODES.includes(b.fileStorage), `board.fileStorage must be one of ${FILE_STORAGE_MODES.join(', ')}`);
+    need(fileStorageOf(b) !== 'r2' || str(b.r2Bucket), 'board.fileStorage "r2" needs board.r2Bucket (the bucket name)');
   }
+  const l = c.languages || {};
+  for (const k of ['documents', 'code', 'commits', 'product']) need(l[k] === undefined || typeof l[k] === 'string', `languages.${k} must be text`);
+  need(l.boardPages === undefined || (typeof l.boardPages === 'string' && /^[A-Za-z]{2,3}(-[A-Za-z0-9]+)*$/.test(l.boardPages)), 'languages.boardPages must be a language code such as en or zh-CN');
   return errors;
 }
 
@@ -96,6 +106,9 @@ const slug = config.project.slug;
 const board = config.board || {};
 const ownerBoard = config.owner.boardName || 'owner';
 const checks = config.checks || {};
+const languages = config.languages || {};
+const fileStorage = fileStorageOf(board);
+const boardLanguage = languages.boardPages || 'en';
 const host = board.enabled ? new URL(board.url).host : '';
 const tokens = {
   PROJECT_NAME: config.project.name,
@@ -108,6 +121,10 @@ const tokens = {
   OWNER_BOARD_NAME: ownerBoard,
   TIMEZONE: config.owner.timezone || 'UTC',
   REPLY_LANGUAGE: config.owner.replyLanguage || 'English',
+  DOC_LANGUAGE: languages.documents || 'English',
+  CODE_LANGUAGE: languages.code || 'English',
+  COMMIT_LANGUAGE: languages.commits || 'English',
+  PRODUCT_LANGUAGES: languages.product || '(not decided yet: ask the Owner when a feature shows text to users)',
   BOARD_URL: board.enabled ? board.url : '(no board yet)',
   BOARD_DEFAULT_PROJECT: board.defaultProject || 'main',
   KEYCHAIN_SERVICE: board.keychainService || `${slug}-board`,
@@ -122,7 +139,8 @@ const boardTokens = {
   D1_NAME: board.d1Name || '',
   D1_ID: board.d1Id || '',
   R2_BUCKET: board.r2Bucket || '',
-  TURNSTILE_SITE_KEY: board.turnstileSiteKey || '',
+  FILE_STORAGE: fileStorage,
+  BOARD_LANGUAGE: boardLanguage,
   PROJECT_NAME: config.project.name,
 };
 
@@ -163,8 +181,8 @@ function boardFiles() {
     const { result, unknown } = render(readFileSync(tmplPath, 'utf8'), boardTokens, { json: true });
     if (unknown.size) throw new Error(`board/wrangler.jsonc.tmpl uses unknown tokens: ${[...unknown].join(', ')}`);
     let text = result;
-    // R2 is optional (it needs a payment card even on the free plan): no bucket, no binding
-    if (!board.r2Bucket) text = text.split('\n').filter((l) => !/^\s*"r2_buckets":/.test(l)).join('\n');
+    // R2 is only one of three ways to keep files (it needs a payment card even on the free plan): no R2 mode, no binding
+    if (fileStorage !== 'r2') text = text.split('\n').filter((l) => !/^\s*"r2_buckets":/.test(l)).join('\n');
     // without an account id wrangler uses the account it is logged in to
     if (!board.cloudflareAccountId) text = text.split('\n').filter((l) => !/^\s*"account_id":/.test(l)).join('\n');
     if (host.endsWith('.workers.dev')) {
@@ -172,7 +190,9 @@ function boardFiles() {
       text = text.split('\n').filter((l) => !/^\s*"routes":/.test(l)).join('\n').replace(/"workers_dev":\s*false/, '"workers_dev": true');
     }
     write(join(ROOT, 'board', 'wrangler.jsonc'), text);
-    if (!board.r2Bucket) out('  note: no R2 bucket configured: card attachments, screenshots and feedback images are switched off.');
+    if (fileStorage === 'none') out('  note: file storage is "none": card attachments and screenshots are switched off.');
+    if (fileStorage === 'd1') out('  note: file storage is "d1": files are kept in the board database (small images only; no extra service).');
+    if (!existsSync(join(ROOT, 'board', 'public', 'i18n', `${boardLanguage}.json`))) out(`  note: no language pack board/public/i18n/${boardLanguage}.json yet: copy en.json to it and translate the values (the pages fall back to English until then).`);
     if (!board.d1Id) out('  note: board.d1Id is empty. Create the database (npx wrangler d1 create <name>), put its id in the config and run this again with --board-only.');
   } else out('  (no board/wrangler.jsonc.tmpl here: skipped)');
   // agents.ts between its markers

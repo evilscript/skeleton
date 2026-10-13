@@ -1,23 +1,33 @@
 // The board: one page per project (a switcher in the top bar), columns for the
 // statuses (Done in a floating panel), cards with chips, assignee, description,
 // screenshots and files. Data comes from the Worker's /api; the owner signs
-// in with the owner key, the agents use the CLI with their own keys.
+// in with the password they chose, the agents use the CLI with their own keys.
 // A card has a status (docs/STATUSES.md); a column draws one bordered layer
 // per status it holds. public/board/statuses.js says which.
-import { commentBodyError, COMMENT_ERRORS } from "./comment-rules.js";
-import { columnOf, STATUSES, statusLabelFor, VIEW_COLUMNS, viewColumnOf, viewStatusesFor } from "./statuses.js";
+import { fitImage } from "../shared/shrink.js";
+import { formatSize, has, init, locale, t } from "../shared/i18n.js";
+import { commentBodyError } from "./comment-rules.js";
+import { columnOf, PROJECT_LAYOUTS, STATUSES, statusLabel, VIEW_COLUMNS, viewColumnOf, viewStatusesFor } from "./statuses.js";
 
+// Every text the page shows is in the language pack (public/i18n/<code>.json, shared/i18n.js); the page waits for it.
+const INFO = await init(); // GET /api/info: the name, the file storage and the language
 // The columns the page draws (statuses.js VIEW_COLUMNS), each with the colour of its dot.
-const COLUMNS = VIEW_COLUMNS.map((c) => [c.key, c.label, `--c-${c.key}`]);
+const COLUMNS = VIEW_COLUMNS.map((c) => [c.key, t("column." + c.key), `--c-${c.key}`]);
+// A status's name: a project's own wording (statuses.js PROJECT_LAYOUTS) if it has one, else the pack's.
+const statusLabelFor = (project, slug) => PROJECT_LAYOUTS[project]?.labels?.[slug] ?? (has("status." + slug) ? t("status." + slug) : statusLabel(slug));
 // Who works on a card: the agents and the owner. The agents are the Worker's
 // list (src/agents.ts), read from /api/agents when the page starts, so a new
 // developer needs no change here.
-let OWNER = { name: "owner", label: "Owner" };
-let AGENTS = { owner: "Owner" };
-let TARGETS = [["owner", "Owner"]];
+let OWNER = { name: "owner", label: t("board.owner") };
+let AGENTS = { owner: t("board.owner") };
+let TARGETS = [["owner", t("board.owner")]];
 let AGENT_INDEX = {};   // agent name -> its place in the list, which picks its colour
-let BRAND = "Board";    // the name the pages show (GET /api/info)
-let FILES = true;       // file storage is on (GET /api/info "files"); without it the attach controls are hidden
+let BRAND = INFO.projectName || t("app.name"); // the name the pages show (GET /api/info)
+const FILES = INFO.files !== false;       // file storage is on (GET /api/info "files"); without it the attach controls are hidden
+// How big one file may be (GET /api/info "maxFileBytes"; 0 without storage) and whether pictures over it are shrunk before they are
+// sent: only when the board keeps its files in its database, where the limit is small (about 1.5 MB).
+const MAX_FILE = INFO.maxFileBytes || 0;
+const SHRINK = INFO.fileStorage === "d1" ? MAX_FILE : 0;
 // "owner" is the author of everything the owner does on the page; OWNER.name is the owner's assignee name.
 const isOwner = (name) => name === "owner" || name === OWNER.name;
 // The owner has a colour of its own in the style sheet; the agents take one from a palette.
@@ -31,25 +41,17 @@ async function loadAgents() {
   AGENTS = Object.fromEntries([...data.agents.map((a) => [a.name, a.label]), [data.owner.name, data.owner.label]]);
   TARGETS = [...data.agents.map((a) => [a.name, a.label]), ["owner", data.owner.label]];
   AGENT_INDEX = Object.fromEntries(data.agents.map((a, i) => [a.name, i]));
-  $("f-assignee").replaceChildren(...[["", "Anyone"], ...Object.entries(AGENTS), ["none", "Nobody"]].map(([v, l]) => el("option", { value: v }, l)));
+  $("f-assignee").replaceChildren(...[["", t("board.top.anyone")], ...Object.entries(AGENTS), ["none", t("board.nobody")]].map(([v, l]) => el("option", { value: v }, l)));
 }
-// The public name from the Worker (the PROJECT_NAME var); "Board" when it is missing.
-async function loadBrand() {
-  try {
-    const res = await fetch("/api/info");
-    if (res.ok) {
-      const info = await res.json();
-      BRAND = info.projectName || BRAND;
-      FILES = info.files !== false;
-    }
-  } catch {}
+// The public name from the Worker (the PROJECT_NAME var, in INFO); the pack's name for the board when it is missing.
+function showBrand() {
   $("gate-title").textContent = BRAND;
   if (!project) document.title = BRAND;
 }
 // Highest first, as the pickers list them; null is none.
-const PRIORITIES = [["blocker", "Blocker"], ["critical", "Critical"], ["major", "Major"], ["minor", "Minor"]];
+const PRIORITIES = ["blocker", "critical", "major", "minor"].map((k) => [k, t("priority." + k)]);
 const PRIORITY = Object.fromEntries(PRIORITIES);
-const TYPES = { note: "Note", assign: "Assign", started: "Started", blocked: "Blocked", question: "Question", review: "Review", merged: "Merged", decision: "Decision" };
+const TYPES = Object.fromEntries(["note", "assign", "started", "blocked", "question", "review", "merged", "decision"].map((k) => [k, t("type." + k)]));
 const FILTERS = ["q", "f-assignee", "f-priority", "f-chip"];
 const PAGE = 60; // cards shown per column before "show more"
 
@@ -121,16 +123,20 @@ function el(tag, attrs = {}, ...kids) {
 }
 // undo = { label, run }: a button that stays a little longer than plain text.
 function toast(text, undo) {
-  const t = $("toast");
-  t.textContent = text;
+  const box = $("toast");
+  box.textContent = text;
   if (undo) {
-    t.append(" ", el("button", { type: "button", class: "btn small", onclick: () => { t.hidden = true; undo.run(); } }, undo.label));
+    box.append(" ", el("button", { type: "button", class: "btn small", onclick: () => { box.hidden = true; undo.run(); } }, undo.label));
   }
-  t.hidden = false;
+  box.hidden = false;
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => (t.hidden = true), undo ? 7000 : 3000);
+  toast.timer = setTimeout(() => (box.hidden = true), undo ? 7000 : 3000);
 }
-const ERRORS = { unauthorized: "Your session expired; reload the page", forbidden: "Not allowed", not_found: "Card not found", too_large: "The file is too large (25 MB at most)", invalid_image: "Screenshots must be PNG, JPEG, WebP or GIF", exists: "That name is already taken", invalid_fields: "Invalid content", title_length: "The title must be 1 to 200 characters", description_too_long: "The description is too long (about 1.8 MB at most); attach very long content as a file", rate_limit: "Too fast: at most 60 comments per author per hour", comment_too_long: "The comment is too long (4 KB at most); put long content in a link", invalid_ref: "A link must start with http:// or https://", invalid_type: "Invalid comment type", invalid_to: "Invalid recipient", invalid_key: "A project key uses lowercase letters, digits and hyphens only (30 characters at most, \"all\" is reserved); give one when the name has no latin letters", invalid_name: "A project name must be 1 to 60 characters", project_exists: "A project with that key already exists", too_many_projects: "Too many projects (50 at most)", unknown_project: "Project not found", invalid_assignee: "Unknown assignee", invalid_priority: "Invalid priority", invalid_status: "Invalid status", invalid_column: "Invalid column", files_disabled: "This board has no file storage", not_owner: "That is not the owner key" };
+// What an error code from the Worker says to the user: the pack's board.error.<code>; the codes are the Worker's, they stay English.
+// `retryAfter` is the Retry-After header of a too_many_attempts answer, in seconds.
+const errorText = (code, retryAfter) => (has("board.error." + code)
+  ? t("board.error." + code, { max: formatSize(MAX_FILE), minutes: Math.max(1, Math.ceil(Number(retryAfter) / 60) || 15) })
+  : t("board.error.generic", { code }));
 
 async function call(method, path, data) {
   const opts = { method, headers: { "x-board": "1" } };
@@ -139,8 +145,7 @@ async function call(method, path, data) {
   const res = await fetch(path, opts);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const msg = COMMENT_ERRORS[body.error] || ERRORS[body.error] || "Something went wrong: " + (body.error || res.status);
-    toast(msg);
+    toast(errorText(body.error || res.status, res.headers.get("retry-after")));
     throw new Error(body.error || String(res.status));
   }
   return body;
@@ -149,7 +154,7 @@ async function call(method, path, data) {
 // ------------------------------------------------------------ sign-in
 
 async function start() {
-  await loadBrand();
+  showBrand();
   const res = await fetch("/api/me");
   if (res.ok) {
     me = await res.json();
@@ -173,15 +178,15 @@ async function start() {
   $("gate").hidden = false;
   $("gate-form").onsubmit = async (ev) => {
     ev.preventDefault();
-    const field = $("gate-key");
+    const field = $("gate-password");
     $("gate-submit").disabled = true;
-    try { await call("POST", "/api/session", { key: field.value.trim() }); location.reload(); }
+    try { await call("POST", "/api/session", { password: field.value }); location.reload(); }
     catch { field.value = ""; field.focus(); }
     finally { $("gate-submit").disabled = false; }
   };
   const cfg = await fetch("/api/config").then((r) => r.json()).catch(() => ({}));
   if (cfg.development) {
-    $("dev-signin").append(el("button", { type: "button", class: "btn", onclick: async () => { await call("POST", "/api/session", { dev: true }); location.reload(); } }, "Local development sign-in"));
+    $("dev-signin").append(el("button", { type: "button", class: "btn", onclick: async () => { await call("POST", "/api/session", { dev: true }); location.reload(); } }, t("board.gate.dev")));
   }
 }
 $("logout").onclick = async () => { await call("DELETE", "/api/session"); location.reload(); };
@@ -204,7 +209,7 @@ function renderProjects() {
   sel.replaceChildren(...projects.map((p) => el("option", { value: p.slug }, p.name)));
   if (project) sel.value = project;
   const current = projects.find((p) => p.slug === project);
-  document.title = current ? `${current.name} · Board` : BRAND;
+  document.title = current ? `${current.name} · ${t("app.name")}` : BRAND;
 }
 // Open a project: forget the last one's cards, filters and read mark, load this one.
 async function enterProject(slug) {
@@ -229,8 +234,8 @@ $("projects-btn").onclick = () => { drawProjectAdmin(); $("projects-dlg").showMo
 const keyFrom = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30).replace(/-+$/, "");
 function drawProjectAdmin() {
   const form = $("projects-form");
-  const name = el("input", { class: "field", placeholder: "New project name", "aria-label": "New project name" });
-  const key = el("input", { class: "field", placeholder: "key (lowercase letters, optional)", "aria-label": "Project key" });
+  const name = el("input", { class: "field", placeholder: t("board.projects.new_name"), "aria-label": t("board.projects.new_name") });
+  const key = el("input", { class: "field", placeholder: t("board.projects.key_placeholder"), "aria-label": t("board.projects.key") });
   // The key follows the name until it is typed in.
   let typed = false;
   key.addEventListener("input", () => { typed = true; });
@@ -241,22 +246,22 @@ function drawProjectAdmin() {
     await loadProjects();
     $("projects-dlg").close();
     await enterProject(made.slug);
-    toast(`Project created: ${made.name}`);
+    toast(t("board.projects.created", { name: made.name }));
   };
   for (const input of [name, key]) input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); add(); } });
   form.replaceChildren(
-    el("header", {}, el("strong", {}, "Projects"), el("span", { style: { flex: "1" } }), el("button", { class: "btn small", value: "close" }, "Close")),
+    el("header", {}, el("strong", {}, t("board.projects.title")), el("span", { style: { flex: "1" } }), el("button", { class: "btn small", value: "close" }, t("common.close"))),
     el("div", { class: "projadmin" },
       projects.map((p) => {
-        const n = el("input", { class: "field", value: p.name, "aria-label": "Project name", onchange: async () => {
+        const n = el("input", { class: "field", value: p.name, "aria-label": t("board.projects.name"), onchange: async () => {
           if (!n.value.trim() || n.value.trim() === p.name) { n.value = p.name; return; }
           await call("PATCH", `/api/projects/${encodeURIComponent(p.slug)}`, { name: n.value });
           await loadProjects();
           drawProjectAdmin();
         } });
-        return el("div", { class: "row" }, el("code", {}, p.slug), n, el("span", { class: "used" }, p.slug === project ? "Current" : ""));
+        return el("div", { class: "row" }, el("code", {}, p.slug), n, el("span", { class: "used" }, p.slug === project ? t("board.projects.current") : ""));
       }),
-      el("div", { class: "row new" }, name, key, el("button", { type: "button", class: "btn small primary", onclick: add }, "Add project"))),
+      el("div", { class: "row new" }, name, key, el("button", { type: "button", class: "btn small primary", onclick: add }, t("board.projects.add")))),
   );
 }
 
@@ -291,18 +296,18 @@ async function reload() {
 function chipColor(name) { return (chips.find((c) => c.name === name) || {}).color || "#6b7280"; }
 function chipEl(name, onRemove) {
   return el("span", { class: "chip", style: { "--chip": chipColor(name) } }, name,
-    onRemove && el("button", { type: "button", title: "Remove", onclick: (e) => { e.stopPropagation(); onRemove(); } }, "×"));
+    onRemove && el("button", { type: "button", title: t("board.chip.remove"), onclick: (e) => { e.stopPropagation(); onRemove(); } }, "×"));
 }
 function agentEl(a) { return a ? el("span", { class: "agent" + (isOwner(a) ? " owner" : agentStyle(a) ? " dyn" : ""), style: agentStyle(a) || undefined }, AGENTS[a] || a) : null; }
-function statusEl(st) { return el("span", { class: "status", style: { "--sc": `var(--s-${st})` }, title: "Status" }, statusLabelFor(project, st)); }
-function priorityEl(p) { return p ? el("span", { class: "prio " + p, title: "Priority" }, PRIORITY[p] || p) : null; }
+function statusEl(st) { return el("span", { class: "status", style: { "--sc": `var(--s-${st})` }, title: t("board.status") }, statusLabelFor(project, st)); }
+function priorityEl(p) { return p ? el("span", { class: "prio " + p, title: t("board.priority") }, PRIORITY[p] || p) : null; }
 
 function renderFilters() {
   const sel = $("f-chip"), keep = sel.value;
   // Counted from the cards on the page (the board's, not Done's): asking the
   // database for the full counts would include Done too.
   const used = (name) => cards.filter((k) => k.col !== "done" && k.chips.includes(name)).length;
-  sel.replaceChildren(el("option", { value: "" }, "All chips"), ...chips.map((c) => el("option", { value: c.name }, `${c.name} (${used(c.name)})`)));
+  sel.replaceChildren(el("option", { value: "" }, t("board.top.all_chips")), ...chips.map((c) => el("option", { value: c.name }, `${c.name} (${used(c.name)})`)));
   sel.value = chips.some((c) => c.name === keep) ? keep : "";
 }
 function matches(c) {
@@ -323,7 +328,7 @@ function cardList(key, list) {
   const limit = shown[key] || PAGE;
   return {
     box: el("div", { class: "cards" }, list.slice(0, limit).map(cardEl)),
-    more: list.length > limit && el("button", { class: "btn small more", type: "button", onclick: () => { shown[key] = limit + PAGE; render(); } }, `Show ${Math.min(PAGE, list.length - limit)} more`),
+    more: list.length > limit && el("button", { class: "btn small more", type: "button", onclick: () => { shown[key] = limit + PAGE; render(); } }, t("board.show_more", { n: Math.min(PAGE, list.length - limit) })),
   };
 }
 // Cards dropped on node get the status `status`; box (if any) places them between
@@ -345,7 +350,7 @@ function layerEl(colKey, slug, list) {
     onclick: (ev) => { ev.stopPropagation(); moveLayer(colKey, slug, by); } }, text);
   return dropTarget(el("div", { class: "layer", "data-status": slug, style: { "--sc": `var(--s-${slug})` } },
     el("header", {}, el("span", { class: "lname" }, statusLabelFor(project, slug)), el("span", { class: "count" }, list.length),
-      move(-1, "Move this layer up", "▲"), move(1, "Move this layer down", "▼")),
+      move(-1, t("board.layer.up"), "▲"), move(1, t("board.layer.down"), "▼")),
     box, more), slug, () => box, true);
 }
 
@@ -353,8 +358,8 @@ function render() {
   const board = $("board");
   const onBoard = cards.filter((c) => c.col !== "done");
   const visible = cards.filter(matches);
-  $("total").textContent = `${visible.filter((c) => c.col !== "done").length} / ${onBoard.length} cards`;
-  const cols = {};
+  $("total").textContent = t("board.total", { shown: visible.filter((c) => c.col !== "done").length, total: onBoard.length });
+  const cols = [];
   for (const [key, label, dot] of COLUMNS) {
     if (key === "done") continue;
     const inCol = visible.filter((c) => viewColumnOf(c.status) === key), slugs = layerOrder(key);
@@ -364,12 +369,9 @@ function render() {
     // Dropped outside every layer, a card takes the column's top layer's status.
     const col = dropTarget(el("section", { class: "col", "data-col": key, style: { "--dot": `var(${dot})` } },
       el("h2", {}, label, el("span", { class: "count" }, inCol.length)), ...kids), slugs[0], () => box);
-    cols[key] = { col, count: inCol.length };
+    cols.push(col);
   }
-  // Feedback sits on top of Backlog in one column and only shows while it
-  // has cards (after the filters), so the board is a column narrower.
-  const stack = el("div", { class: "stack" }, cols.feedback.count > 0 && cols.feedback.col, cols.backlog.col);
-  board.replaceChildren(stack, ...COLUMNS.filter(([key]) => key !== "feedback" && key !== "backlog" && key !== "done").map(([key]) => cols[key].col));
+  board.replaceChildren(...cols);
   renderDone(visible);
 }
 
@@ -378,14 +380,15 @@ function render() {
 function renderDone(visible) {
   const total = doneLoaded ? cards.filter((c) => c.col === "done").length : doneHidden;
   const btn = $("done-btn");
-  btn.textContent = `Done ${total}`;
+  btn.textContent = t("board.done_count", { n: total });
   btn.classList.toggle("on", doneOpen);
   const panel = $("done-panel");
   panel.hidden = !doneOpen;
   if (!doneOpen) return;
-  const close = el("button", { class: "btn small", type: "button", onclick: closeDone }, "Close");
+  const close = el("button", { class: "btn small", type: "button", onclick: closeDone }, t("common.close"));
+  const heading = (count) => el("h2", {}, t("column.done"), el("span", { class: "count" }, count));
   if (!doneLoaded) {
-    panel.replaceChildren(el("header", {}, el("h2", {}, "Done", el("span", { class: "count" }, total)), close), el("p", { class: "empty" }, "Loading…"));
+    panel.replaceChildren(el("header", {}, heading(total), close), el("p", { class: "empty" }, t("common.loading")));
     return;
   }
   const list = sorted(visible, "done");
@@ -394,8 +397,8 @@ function renderDone(visible) {
   const old = panel.querySelector(".cards");
   const top = old ? old.scrollTop : 0;
   panel.replaceChildren(...[
-    el("header", {}, el("h2", {}, "Done", el("span", { class: "count" }, searching() ? `${list.length} / ${total}` : total)), close),
-    !list.length && el("p", { class: "empty" }, searching() ? "No done cards match the search and filters" : "No done cards yet"),
+    el("header", {}, heading(searching() ? `${list.length} / ${total}` : total), close),
+    !list.length && el("p", { class: "empty" }, searching() ? t("board.done.no_match") : t("board.done.none")),
     box, more].filter(Boolean));
   box.scrollTop = top;
 }
@@ -405,7 +408,7 @@ async function openDone() {
   if (doneLoaded) return;
   doneLoaded = true;
   try { await reload(); }
-  catch (e) { doneLoaded = doneOpen = false; toast("It did not load; click again"); render(); }
+  catch (e) { doneLoaded = doneOpen = false; toast(t("board.done.failed")); render(); }
 }
 // Closing drops the done cards again, so later reloads skip them.
 function closeDone() {
@@ -433,30 +436,30 @@ async function setStatus(no, status) {
 }
 async function markDone(no, before) {
   await setStatus(no, "done");
-  toast(`#${no} marked done`, { label: "Undo", run: () => setStatus(no, before) });
+  toast(t("board.toast.marked_done", { no }), { label: t("board.undo"), run: () => setStatus(no, before) });
 }
 async function reopen(no) {
   await setStatus(no, "backlog");
-  toast(`#${no} reopened and put back in the backlog`, { label: "Undo", run: () => setStatus(no, "done") });
+  toast(t("board.toast.reopened", { no }), { label: t("board.undo"), run: () => setStatus(no, "done") });
 }
 function doneButton(c, small) {
   const done = c.status === "done";
-  return el("button", { type: "button", class: `btn ${small ? "small " : ""}${done ? "" : "ok"}`.trim(), title: done ? "Move back to the backlog" : "Move to Done",
-    onclick: (ev) => { ev.stopPropagation(); done ? reopen(c.no) : markDone(c.no, c.status); } }, done ? "Reopen" : "Done");
+  return el("button", { type: "button", class: `btn ${small ? "small " : ""}${done ? "" : "ok"}`.trim(), title: done ? t("board.card.reopen_title") : t("board.card.done_title"),
+    onclick: (ev) => { ev.stopPropagation(); done ? reopen(c.no) : markDone(c.no, c.status); } }, done ? t("board.card.reopen") : t("board.card.done"));
 }
 function cardEl(c) {
   const tools = el("div", { class: "tools" },
     doneButton(c, true),
-    el("button", { type: "button", class: "btn small", title: "Edit this card", onclick: (ev) => { ev.stopPropagation(); openCard(c.no); } }, "Edit"),
-    confirmButton("Remove", "Remove it?", () => removeCard(c.no)));
+    el("button", { type: "button", class: "btn small", title: t("board.card.edit_title"), onclick: (ev) => { ev.stopPropagation(); openCard(c.no); } }, t("board.card.edit")),
+    confirmButton(t("board.card.remove"), t("board.card.remove_sure"), () => removeCard(c.no)));
   tools.addEventListener("click", (ev) => ev.stopPropagation());
   const e = el("article", { class: "card", draggable: "true", "data-no": c.no, "data-prio": c.priority, onclick: () => openCard(c.no) },
     // The status chip sits at the card's top right; the number and title run on beside it and under it.
     el("div", { class: "head" }, statusEl(c.status), tools, el("span", { class: "no" }, "#" + c.no), el("span", { class: "title" }, c.title)),
     FILES && c.thumb && el("img", { class: "thumb", src: `/api/files/${c.thumb}`, alt: "", loading: "lazy" }),
     el("div", { class: "meta" }, priorityEl(c.priority), c.chips.map((n) => chipEl(n)), agentEl(c.assignee),
-      FILES && (c.shots || c.files) ? el("span", { class: "icons" }, [c.shots && `Images ${c.shots}`, c.files && `Files ${c.files}`].filter(Boolean).join(" · ")) : null,
-      c.commentCount ? el("span", { class: "icons talk", title: "Comments" }, `Comments ${c.commentCount}`) : null));
+      FILES && (c.shots || c.files) ? el("span", { class: "icons" }, [c.shots && t("board.card.images", { n: c.shots }), c.files && t("board.card.files", { n: c.files })].filter(Boolean).join(" · ")) : null,
+      c.commentCount ? el("span", { class: "icons talk", title: t("board.comments") }, t("board.comments_count", { n: c.commentCount })) : null));
   e.addEventListener("dragstart", (ev) => { dragging = c; e.classList.add("dragging"); ev.dataTransfer.setData("text/plain", String(c.no)); });
   e.addEventListener("dragend", () => { dragging = null; e.classList.remove("dragging"); });
   return e;
@@ -478,7 +481,7 @@ async function dropOn(status, box, y) {
   c.status = status;
   c.col = columnOf(status);
   if (sort !== undefined) c.sort = sort;
-  if (status === "done" && !doneOpen) toast(`#${c.no} moved to Done (the Done button in the top bar shows it)`);
+  if (status === "done" && !doneOpen) toast(t("board.toast.moved_done", { no: c.no }));
   render();
   try { await call("PATCH", `/api/cards/${c.no}`, sort === undefined ? { status } : { status, sort }); }
   finally { reload(); }
@@ -490,13 +493,13 @@ async function dropOn(status, box, y) {
 // owner can delete a removed card for good.
 async function removeCard(no) {
   await call("DELETE", `/api/cards/${no}`);
-  toast(`#${no} removed (the Removed button in the top bar restores it)`);
+  toast(t("board.toast.removed", { no }));
   if (openNo === no) $("card-dlg").close();
   reload();
 }
 async function restoreCard(no) {
   await call("POST", `/api/cards/${no}/restore`);
-  toast(`#${no} restored`);
+  toast(t("board.toast.restored", { no }));
   reload();
 }
 $("removed").onclick = async () => { await drawRemoved(); $("removed-dlg").showModal(); };
@@ -504,37 +507,37 @@ async function drawRemoved() {
   const { cards: gone } = await call("GET", inProject("/api/cards?removed=1"));
   gone.sort((a, b) => (b.removedAt || "").localeCompare(a.removedAt || ""));
   $("removed-form").replaceChildren(
-    el("header", {}, el("strong", {}, `Removed: ${gone.length}`), el("span", { style: { flex: "1" } }), el("button", { class: "btn small", value: "close" }, "Close")),
+    el("header", {}, el("strong", {}, t("board.removed.title", { n: gone.length })), el("span", { style: { flex: "1" } }), el("button", { class: "btn small", value: "close" }, t("common.close"))),
     gone.length ? el("div", { class: "gone" }, gone.map((c) => el("div", { class: "row" },
       el("span", { class: "no" }, "#" + c.no),
       el("a", { href: "#", onclick: (e) => { e.preventDefault(); $("removed-dlg").close(); openCard(c.no); } }, c.title),
       el("span", { class: "when" }, `${when(c.removedAt)} · ${who(c.removedBy)}`),
-      el("button", { type: "button", class: "btn small", onclick: async () => { await restoreCard(c.no); drawRemoved(); } }, "Restore"),
-      me.actor === "owner" && confirmButton("Delete forever", "Click again; it is gone for good", async () => { await call("DELETE", `/api/cards/${c.no}?purge=1`); toast(`#${c.no} deleted forever`); drawRemoved(); }),
-    ))) : el("p", {}, "No removed cards."),
+      el("button", { type: "button", class: "btn small", onclick: async () => { await restoreCard(c.no); drawRemoved(); } }, t("board.removed.restore")),
+      me.actor === "owner" && confirmButton(t("board.removed.delete"), t("board.removed.delete_sure"), async () => { await call("DELETE", `/api/cards/${c.no}?purge=1`); toast(t("board.toast.deleted_forever", { no: c.no })); drawRemoved(); }),
+    ))) : el("p", {}, t("board.removed.none")),
   );
 }
-function who(a) { return AGENTS[a] || (isOwner(a) ? OWNER.label : a === "visitor" ? "Visitor" : a || ""); }
+function who(a) { return AGENTS[a] || (isOwner(a) ? OWNER.label : a || ""); }
 
 // ------------------------------------------------------------ card dialog
 
 // A card's status, grouped by the column that shows it (the single-status
-// columns, Feedback and Done, have just the one option).
+// column, Done, has just the one option).
 function statusSelect(value, onchange) {
   return el("select", { class: "field", onchange }, COLUMNS.map(([k, label]) =>
     el("optgroup", { label }, viewStatusesFor(project, k).map((slug) => el("option", { value: slug, selected: slug === value }, statusLabelFor(project, slug))))));
 }
 function agentSelect(value, onchange) {
   return el("select", { class: "field", onchange },
-    el("option", { value: "" }, "Nobody"), Object.entries(AGENTS).map(([k, v]) => el("option", { value: k, selected: k === value }, v)));
+    el("option", { value: "" }, t("board.nobody")), Object.entries(AGENTS).map(([k, v]) => el("option", { value: k, selected: k === value }, v)));
 }
 function prioritySelect(value, onchange) {
   return el("select", { class: "field", onchange },
-    el("option", { value: "" }, "None"), PRIORITIES.map(([k, v]) => el("option", { value: k, selected: k === value }, v)));
+    el("option", { value: "" }, t("priority.none")), PRIORITIES.map(([k, v]) => el("option", { value: k, selected: k === value }, v)));
 }
 function chipPicker(list, onchange) {
   const id = "chip-options-" + Math.random().toString(36).slice(2);
-  const input = el("input", { class: "field", list: id, placeholder: "Add a chip, press Enter" });
+  const input = el("input", { class: "field", list: id, placeholder: t("board.chip.add_placeholder") });
   const add = () => {
     const name = input.value.trim();
     if (name && !list.includes(name)) onchange([...list, name]);
@@ -555,17 +558,27 @@ function confirmButton(label, sure, action) {
   };
   return b;
 }
-const size = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB");
-const when = (t) => new Date(t).toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
-const ACTIONS = { priority: "priority", remove: "removed", restore: "restored", purge: "deleted forever", create: "created", move: "moved to", title: "changed the title", description: "changed the description", assign: "assigned to", chips: "chips", status: "status", screenshot: "added a screenshot", attach: "added a file", "remove file": "removed a file", delete: "deleted the card" };
+const size = formatSize;
+const when = (time) => new Date(time).toLocaleString(locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+// An activity entry's action word (the Worker logs it in English as a code, "remove file"): the pack's board.action.<action>.
+const actionText = (action) => (has("board.action." + action.replace(/ /g, "_")) ? t("board.action." + action.replace(/ /g, "_")) : action);
 
 async function upload(no, files, kind) {
   if (!files.length) return;
   const form = new FormData();
   form.append("kind", kind);
-  for (const f of files) form.append("file", f, f.name || (kind === "screenshot" ? "screenshot.png" : "file"));
+  // A picture over the board's limit is shrunk first when the board keeps files in its database; whatever is still over the limit is
+  // not sent (the Worker would refuse it, file_too_large).
+  let sent = 0;
+  for (const original of files) {
+    const f = await fitImage(original, SHRINK);
+    if (MAX_FILE && f.size > MAX_FILE) { toast(t("board.error.file_too_large", { max: formatSize(MAX_FILE) })); continue; }
+    form.append("file", f, f.name || (kind === "screenshot" ? "screenshot.png" : "file"));
+    sent++;
+  }
+  if (!sent) return;
   await call("POST", `/api/cards/${no}/files`, form);
-  toast(kind === "screenshot" ? "Screenshot uploaded" : "File uploaded");
+  toast(kind === "screenshot" ? t("board.upload.screenshot") : t("board.upload.file"));
 }
 function dropZone(text, onfiles) {
   const input = el("input", { type: "file", multiple: true, hidden: true, onchange: () => onfiles([...input.files]) });
@@ -581,16 +594,16 @@ async function openCard(no) {
   const { card, files, activity } = await call("GET", `/api/cards/${no}`);
   const form = $("card-form");
   const save = async (patch) => { await call("PATCH", `/api/cards/${no}`, patch); await reload(); if (openNo === no) openCard(no); };
-  const title = el("input", { value: card.title, "aria-label": "Title", onchange: () => title.value.trim() && save({ title: title.value }) });
+  const title = el("input", { value: card.title, "aria-label": t("board.card.title"), onchange: () => title.value.trim() && save({ title: title.value }) });
 
-  const view = el("div", { class: "desc-view", title: "Click to edit" }, card.description || "(No description; click to write one)");
+  const view = el("div", { class: "desc-view", title: t("board.card.click_edit") }, card.description || t("board.card.no_description"));
   const area = el("textarea", { class: "field", hidden: true }, card.description);
   const descBtns = el("div", { class: "actions", hidden: true },
-    el("button", { type: "button", class: "btn small", onclick: () => { area.value = card.description; area.hidden = descBtns.hidden = true; view.hidden = false; } }, "Cancel"),
-    el("button", { type: "button", class: "btn small primary", onclick: () => save({ description: area.value }) }, "Save description"));
+    el("button", { type: "button", class: "btn small", onclick: () => { area.value = card.description; area.hidden = descBtns.hidden = true; view.hidden = false; } }, t("common.cancel")),
+    el("button", { type: "button", class: "btn small primary", onclick: () => save({ description: area.value }) }, t("board.card.save_description")));
   view.onclick = () => { view.hidden = true; area.hidden = descBtns.hidden = false; area.focus(); };
 
-  const talkLabel = el("label", {}, `Comments ${card.commentCount || 0}`);
+  const talkLabel = el("label", {}, t("board.comments_count", { n: card.commentCount || 0 }));
   const shots = files.filter((f) => f.kind === "screenshot"), others = files.filter((f) => f.kind === "file");
   const refresh = () => reload().then(() => openCard(no));
   form.replaceChildren(
@@ -598,38 +611,36 @@ async function openCard(no) {
       !card.removedAt && el("button", { type: "button", class: `btn small${card.status === "done" ? "" : " ok"}`, onclick: async () => {
         card.status === "done" ? await reopen(no) : await markDone(no, card.status);
         if (openNo === no) openCard(no);
-      } }, card.status === "done" ? "Reopen" : "Mark done"),
-      el("button", { class: "btn small", value: "close" }, "Close")),
+      } }, card.status === "done" ? t("board.card.reopen") : t("board.card.mark_done")),
+      el("button", { class: "btn small", value: "close" }, t("common.close"))),
     el("div", { class: "grid" },
-      el("label", {}, "Status"), statusSelect(card.status, (e) => save({ status: e.target.value })),
-      el("label", {}, "Assignee"), agentSelect(card.assignee || "", (e) => save({ assignee: e.target.value || null })),
-      el("label", {}, "Priority"), prioritySelect(card.priority || "", (e) => save({ priority: e.target.value || null })),
-      el("label", {}, "Chips"), chipPicker(card.chips, (list) => save({ chips: list })),
-      el("label", {}, "Description"), el("div", {}, view, area, descBtns),
-      card.report && el("label", {}, "Diagnostics"), card.report && el("details", { class: "report" }, el("summary", {}, "Show"), el("pre", {}, card.report)),
-      card.contact && el("label", {}, "Contact"), card.contact && el("div", {}, card.contact),
-      // Screenshots and attachments need file storage (R2); without it these rows are not drawn.
+      el("label", {}, t("board.status")), statusSelect(card.status, (e) => save({ status: e.target.value })),
+      el("label", {}, t("board.assignee")), agentSelect(card.assignee || "", (e) => save({ assignee: e.target.value || null })),
+      el("label", {}, t("board.priority")), prioritySelect(card.priority || "", (e) => save({ priority: e.target.value || null })),
+      el("label", {}, t("board.chips")), chipPicker(card.chips, (list) => save({ chips: list })),
+      el("label", {}, t("board.description")), el("div", {}, view, area, descBtns),
+      // Screenshots and attachments need file storage (FILE_STORAGE r2 or d1); without it these rows are not drawn.
       FILES && [
-        el("label", {}, `Screenshots ${shots.length}`),
+        el("label", {}, t("board.card.screenshots", { n: shots.length })),
         el("div", {}, el("div", { class: "shots" }, shots.map((f) =>
           el("div", { class: "shot" },
             el("img", { src: `/api/files/${f.id}`, alt: f.name, loading: "lazy", onclick: () => { $("zoom-img").src = `/api/files/${f.id}`; $("zoom-dlg").showModal(); } }),
-            confirmButton("×", "Delete?", () => call("DELETE", `/api/files/${f.id}`).then(refresh))))),
-          dropZone("Drag screenshots here, click to choose, or paste", (fs) => upload(no, fs.filter((f) => f.type.startsWith("image/")), "screenshot").then(refresh))),
-        el("label", {}, `Files ${others.length}`),
+            confirmButton("×", t("board.card.delete_sure"), () => call("DELETE", `/api/files/${f.id}`).then(refresh))))),
+          dropZone(t("board.card.drop_screenshots"), (fs) => upload(no, fs.filter((f) => f.type.startsWith("image/")), "screenshot").then(refresh))),
+        el("label", {}, t("board.card.files", { n: others.length })),
         el("div", {}, el("div", { class: "files" }, others.map((f) =>
           el("div", { class: "file" }, el("a", { href: `/api/files/${f.id}`, download: f.name }, f.name), el("span", {}, size(f.size)),
-            confirmButton("Delete", "Delete?", () => call("DELETE", `/api/files/${f.id}`).then(refresh))))),
-          dropZone("Drag files here or click to choose (25 MB at most)", (fs) => upload(no, fs, "file").then(refresh))),
+            confirmButton(t("board.card.delete"), t("board.card.delete_sure"), () => call("DELETE", `/api/files/${f.id}`).then(refresh))))),
+          dropZone(t("board.card.drop_files", { max: formatSize(MAX_FILE) }), (fs) => upload(no, fs, "file").then(refresh))),
       ],
-      talkLabel, threadBox(no, (n) => { talkLabel.textContent = `Comments ${n}`; }),
-      el("label", {}, "Activity"),
-      el("div", { class: "activity" }, activity.map((a) => el("div", {}, `${when(a.at)} · ${who(a.actor)} · ${ACTIONS[a.action] || a.action} ${a.action === "assign" ? (AGENTS[a.detail] || "nobody") : a.action === "priority" ? (PRIORITY[a.detail] || "none") : a.action === "status" || a.action === "create" ? a.detail.replace(/[a-z_]+/g, (w) => (STATUSES.some((x) => x.slug === w) ? statusLabelFor(project, w) : w)) : a.detail}`)))),
+      talkLabel, threadBox(no, (n) => { talkLabel.textContent = t("board.comments_count", { n }); }),
+      el("label", {}, t("board.card.activity")),
+      el("div", { class: "activity" }, activity.map((a) => el("div", {}, `${when(a.at)} · ${who(a.actor)} · ${actionText(a.action)} ${a.action === "assign" ? (AGENTS[a.detail] || t("board.nobody_lower")) : a.action === "priority" ? (PRIORITY[a.detail] || t("board.none_lower")) : a.action === "status" || a.action === "create" ? a.detail.replace(/[a-z_]+/g, (w) => (STATUSES.some((x) => x.slug === w) ? statusLabelFor(project, w) : w)) : a.detail}`)))),
     card.removedAt
-      ? el("div", { class: "actions" }, el("span", { class: "who" }, `Removed: ${when(card.removedAt)} · ${who(card.removedBy)}`),
-          el("button", { type: "button", class: "btn small", onclick: async () => { await restoreCard(no); openCard(no); } }, "Restore"),
-          me.actor === "owner" && confirmButton("Delete forever", "Click again; it is gone for good", async () => { await call("DELETE", `/api/cards/${no}?purge=1`); $("card-dlg").close(); reload(); }))
-      : el("div", { class: "actions" }, confirmButton("Remove this card", "Remove it? (it can be restored)", () => removeCard(no))),
+      ? el("div", { class: "actions" }, el("span", { class: "who" }, t("board.removed.by", { when: when(card.removedAt), who: who(card.removedBy) })),
+          el("button", { type: "button", class: "btn small", onclick: async () => { await restoreCard(no); openCard(no); } }, t("board.removed.restore")),
+          me.actor === "owner" && confirmButton(t("board.removed.delete"), t("board.removed.delete_sure"), async () => { await call("DELETE", `/api/cards/${no}?purge=1`); $("card-dlg").close(); reload(); }))
+      : el("div", { class: "actions" }, confirmButton(t("board.card.remove_this"), t("board.card.remove_this_sure"), () => removeCard(no))),
   );
   if (!$("card-dlg").open) $("card-dlg").showModal();
 }
@@ -667,7 +678,7 @@ function markSeen() {
 }
 function badge() {
   const b = $("feed-btn");
-  b.textContent = unread.length ? `Conversation ${unread.length}` : "Conversation";
+  b.textContent = unread.length ? t("board.feed_count", { n: unread.length }) : t("board.feed");
   b.classList.toggle("unread", unread.length > 0);
 }
 // First visit: everything so far counts as read. Later visits: pull what came
@@ -699,16 +710,16 @@ async function pullComments() {
 
 // A card's thread and the box to write in.
 function threadBox(no, onCount) {
-  const list = el("div", { class: "thread" }, el("p", { class: "empty" }, "Loading…"));
-  const to = el("select", { class: "field", "aria-label": "To" }, el("option", { value: "" }, "No one in particular"), TARGETS.map(([v, l]) => el("option", { value: v }, l)));
-  const type = el("select", { class: "field", "aria-label": "Type" }, Object.entries(TYPES).map(([k, v]) => el("option", { value: k }, v)));
-  const text = el("textarea", { class: "field", placeholder: "Write a comment (Ctrl / Cmd + Enter sends)", "aria-label": "Comment" });
+  const list = el("div", { class: "thread" }, el("p", { class: "empty" }, t("common.loading")));
+  const to = el("select", { class: "field", "aria-label": t("board.thread.to") }, el("option", { value: "" }, t("board.thread.no_one")), TARGETS.map(([v, l]) => el("option", { value: v }, l)));
+  const type = el("select", { class: "field", "aria-label": t("board.thread.type") }, Object.entries(TYPES).map(([k, v]) => el("option", { value: k }, v)));
+  const text = el("textarea", { class: "field", placeholder: t("board.thread.placeholder"), "aria-label": t("board.thread.comment") });
   const shown = new Set();
   const add = (comments) => {
     if (shown.size === 0) list.replaceChildren();
     const stick = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
     for (const m of comments) if (!shown.has(m.id)) { shown.add(m.id); list.append(commentEl(m, false)); }
-    if (shown.size === 0) list.replaceChildren(el("p", { class: "empty" }, "No comments yet"));
+    if (shown.size === 0) list.replaceChildren(el("p", { class: "empty" }, t("board.thread.none")));
     if (stick) list.scrollTop = list.scrollHeight;
     if (onCount) onCount(shown.size);
   };
@@ -718,7 +729,7 @@ function threadBox(no, onCount) {
     const body = text.value.trim();
     if (!body) return text.focus();
     const error = commentBodyError(body);
-    if (error) { toast(COMMENT_ERRORS[error]); return; }
+    if (error) { toast(errorText(error)); return; }
     sending = true;
     try {
       await call("POST", `/api/cards/${no}/comments`, { body, ...(to.value ? { to: to.value } : {}), type: type.value });
@@ -730,9 +741,9 @@ function threadBox(no, onCount) {
   };
   text.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } });
   const box = el("div", {}, list, el("div", { class: "composer" }, text,
-    el("div", { class: "row2" }, "To", to, "Type", type, el("button", { type: "button", class: "btn small primary send", onclick: send }, "Send"))));
+    el("div", { class: "row2" }, t("board.thread.to"), to, t("board.thread.type"), type, el("button", { type: "button", class: "btn small primary send", onclick: send }, t("board.thread.send")))));
   openThread = { no, add };
-  call("GET", `/api/cards/${no}/comments`).then(({ comments }) => { if (!comments.length) list.replaceChildren(el("p", { class: "empty" }, "No comments yet")); else add(comments); }).catch(() => {});
+  call("GET", `/api/cards/${no}/comments`).then(({ comments }) => { if (!comments.length) list.replaceChildren(el("p", { class: "empty" }, t("board.thread.none"))); else add(comments); }).catch(() => {});
   return box;
 }
 
@@ -751,12 +762,12 @@ async function drawFeed() {
   const { comments } = await call("GET", "/api/comments?" + q);
   const sel = (key, options, label) => el("select", { class: "field", "aria-label": label, onchange: (e) => { feedFilter[key] = e.target.value; drawFeed(); } },
     el("option", { value: "" }, label), options.map(([v, l]) => el("option", { value: v, selected: feedFilter[key] === v }, l)));
-  const list = el("div", { class: "thread feedlist", id: "feed-list" }, comments.length ? comments.map((m) => commentEl(m, true)) : el("p", { class: "empty" }, "No comments yet"));
+  const list = el("div", { class: "thread feedlist", id: "feed-list" }, comments.length ? comments.map((m) => commentEl(m, true)) : el("p", { class: "empty" }, t("board.thread.none")));
   $("feed-form").replaceChildren(
-    el("header", {}, el("strong", {}, "Conversation"), el("span", { style: { flex: "1" } }),
-      sel("author", TARGETS, "All authors"),
-      sel("type", Object.entries(TYPES), "All types"),
-      el("button", { class: "btn small", value: "close" }, "Close")),
+    el("header", {}, el("strong", {}, t("board.feed")), el("span", { style: { flex: "1" } }),
+      sel("author", TARGETS, t("board.feed.all_authors")),
+      sel("type", Object.entries(TYPES), t("board.feed.all_types")),
+      el("button", { class: "btn small", value: "close" }, t("common.close"))),
     list);
   list.scrollTop = list.scrollHeight;
 }
@@ -779,24 +790,24 @@ $("feed-dlg").addEventListener("close", () => { feedOpen = false; });
 $("new").onclick = () => {
   const form = $("card-form");
   let list = [];
-  const title = el("input", { placeholder: "Title", required: true, "aria-label": "Title" });
+  const title = el("input", { placeholder: t("board.card.title"), required: true, "aria-label": t("board.card.title") });
   const col = statusSelect("backlog");
   const who = agentSelect("");
   const prio = prioritySelect("");
-  const desc = el("textarea", { class: "field", placeholder: "Description" });
+  const desc = el("textarea", { class: "field", placeholder: t("board.description") });
   const picker = el("div");
   const drawChips = () => picker.replaceChildren(chipPicker(list, (l) => { list = l; drawChips(); }));
   drawChips();
   form.replaceChildren(
-    el("header", {}, el("span", { class: "no" }, "New card"), title, el("button", { class: "btn small", value: "close", formnovalidate: true }, "Cancel")),
-    el("div", { class: "grid" }, el("label", {}, "Status"), col, el("label", {}, "Assignee"), who, el("label", {}, "Priority"), prio, el("label", {}, "Chips"), picker, el("label", {}, "Description"), desc),
+    el("header", {}, el("span", { class: "no" }, t("board.top.new")), title, el("button", { class: "btn small", value: "close", formnovalidate: true }, t("common.cancel"))),
+    el("div", { class: "grid" }, el("label", {}, t("board.status")), col, el("label", {}, t("board.assignee")), who, el("label", {}, t("board.priority")), prio, el("label", {}, t("board.chips")), picker, el("label", {}, t("board.description")), desc),
     el("div", { class: "actions" }, el("button", { type: "button", class: "btn primary", onclick: async () => {
       if (!title.value.trim()) return title.focus();
       const { no } = await call("POST", "/api/cards", { project, title: title.value, status: col.value, assignee: who.value || null, priority: prio.value || null, chips: list, description: desc.value });
       await reload();
-      toast(`Created #${no}`);
+      toast(t("board.toast.created", { no }));
       openCard(no);
-    } }, "Create")),
+    } }, t("board.new.create"))),
   );
   openNo = null;
   $("card-dlg").showModal();
@@ -814,16 +825,16 @@ async function loadChipCounts() {
 $("manage-chips").onclick = async () => { await loadChipCounts(); drawChipAdmin(); $("chips-dlg").showModal(); };
 function drawChipAdmin() {
   const form = $("chips-form");
-  const name = el("input", { class: "field", placeholder: "New chip name" });
+  const name = el("input", { class: "field", placeholder: t("board.chips.new_name") });
   const color = el("input", { type: "color", value: "#2563eb" });
   form.replaceChildren(
-    el("header", {}, el("strong", {}, "Manage chips"), el("span", { style: { flex: "1" } }), el("button", { class: "btn small", value: "close" }, "Close")),
+    el("header", {}, el("strong", {}, t("board.top.manage_chips")), el("span", { style: { flex: "1" } }), el("button", { class: "btn small", value: "close" }, t("common.close"))),
     el("div", { class: "chipadmin" }, chips.map((c) => {
       const n = el("input", { class: "field", value: c.name, onchange: async () => { if (n.value.trim() && n.value !== c.name) { await call("PATCH", inProject(`/api/chips/${encodeURIComponent(c.name)}`), { name: n.value }); await reload(); await loadChipCounts(); drawChipAdmin(); } } });
       return el("div", { class: "row" },
         el("input", { type: "color", value: c.color, onchange: async (e) => { await call("PATCH", inProject(`/api/chips/${encodeURIComponent(c.name)}`), { color: e.target.value }); await reload(); } }),
-        n, el("span", { class: "used" }, `${chipCounts[c.name] ?? 0} cards`),
-        confirmButton("Delete", "Remove it from all cards?", async () => { await call("DELETE", inProject(`/api/chips/${encodeURIComponent(c.name)}`)); await reload(); await loadChipCounts(); drawChipAdmin(); }));
+        n, el("span", { class: "used" }, t("board.chips.cards", { n: chipCounts[c.name] ?? 0 })),
+        confirmButton(t("board.card.delete"), t("board.chips.delete_sure"), async () => { await call("DELETE", inProject(`/api/chips/${encodeURIComponent(c.name)}`)); await reload(); await loadChipCounts(); drawChipAdmin(); }));
     }),
     el("div", { class: "row" }, color, name, el("span"), el("button", { type: "button", class: "btn small primary", onclick: async () => {
       if (!name.value.trim()) return name.focus();
@@ -831,17 +842,17 @@ function drawChipAdmin() {
       await reload();
       await loadChipCounts();
       drawChipAdmin();
-    } }, "Add"))),
+    } }, t("board.chips.add")))),
   );
 }
 
 // ------------------------------------------------------------ theme
 
 // System, light, then dark. theme.js applies the saved choice before the page draws.
-const THEMES = [["", "System"], ["light", "Light"], ["dark", "Dark"]];
+const THEMES = [["", t("theme.system")], ["light", t("theme.light")], ["dark", t("theme.dark")]];
 function drawTheme() {
   const now = document.documentElement.dataset.theme || "";
-  $("theme-btn").textContent = "Theme: " + THEMES.find(([k]) => k === now)[1];
+  $("theme-btn").textContent = t("theme.button", { theme: THEMES.find(([k]) => k === now)[1] });
 }
 $("theme-btn").onclick = () => {
   const now = document.documentElement.dataset.theme || "";

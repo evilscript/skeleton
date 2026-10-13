@@ -11,24 +11,27 @@
     "directory": "public",
     "binding": "ASSETS",
     // The API, the root redirect and the bare page paths go to the Worker.
-    "run_worker_first": ["/api/*", "/", "/board", "/feedback"],
+    "run_worker_first": ["/api/*", "/", "/board"],
   },
   "observability": { "enabled": true },
   "vars": {
-    // Public values: the Turnstile site key is shown to every browser anyway.
-    // Secrets (TURNSTILE_SECRET, SESSION_SECRET, OWNER_KEY, AGENT_KEYS) are set
-    // with `npm run setup:secrets`.
-    "TURNSTILE_SITE_KEY": "{{TURNSTILE_SITE_KEY}}",
+    // Public values, shown to every browser. Secrets (OWNER_PASSWORD, SESSION_SECRET,
+    // AGENT_KEYS) are set with `npm run setup:secrets`.
     "PROJECT_NAME": "{{PROJECT_NAME}}",
+    // Where screenshots and attachments are kept: "none", "d1" (in the database, no card needed) or "r2" (the bucket below).
+    "FILE_STORAGE": "{{FILE_STORAGE}}",
+    // The language of the pages: the pack public/i18n/<code>.json ("en", "zh-CN", ...).
+    "BOARD_LANGUAGE": "{{BOARD_LANGUAGE}}",
     "ENVIRONMENT": "production",
   },
   "routes": [{ "pattern": "{{BOARD_HOST}}", "custom_domain": true }],
   "d1_databases": [
     { "binding": "DB", "database_name": "{{D1_NAME}}", "database_id": "{{D1_ID}}" },
   ],
-  // File storage is optional: tools/setup/apply.mjs drops the next line when
-  // board.r2Bucket is empty (R2 needs a payment card even on the free plan). The
-  // board then works without screenshots, attachments and feedback images.
+  // Only for FILE_STORAGE "r2": tools/setup/apply.mjs drops the next line in the
+  // other modes (R2 needs a payment card even on the free plan). With "d1" the
+  // files live in the file_blobs table; with "none" the board has no screenshots
+  // or attachments.
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "{{R2_BUCKET}}" }],
   "workers_dev": false,
 }

@@ -19,8 +19,9 @@ Check the current working tree, remote state and relevant board cards each time;
 
 These are the defaults. The Owner's own words always win, and `docs/CONSTITUTION.md` section 3 holds the full list.
 
-- Reply to the Owner in {{REPLY_LANGUAGE}}, short and plain, result first. Give times in {{TIMEZONE}}. Keep code, comments, commit
-  messages and technical documentation in English.
+- Reply to the Owner in {{REPLY_LANGUAGE}}, short and plain, result first. Give times in {{TIMEZONE}}. Languages the Owner chose: project
+  documents and card comments between members in {{DOC_LANGUAGE}}; code comments in {{CODE_LANGUAGE}}; commit messages in
+  {{COMMIT_LANGUAGE}}; text the product shows to its users in {{PRODUCT_LANGUAGES}}.
 - Never give the Owner a bare number: a pull request is `PR #12 - #34 - Fix login redirect` (pull request, ticket number, ticket
   title), a ticket is `#34 - Fix login redirect`. Between members on a card the short form is fine.
 - Make small implementation decisions independently and say what you decided. Ask about real product decisions, giving a
@@ -70,9 +71,9 @@ ask. The full role definitions are `docs/CONSTITUTION.md` section 1 and `docs/ro
   cards regularly: run the shared listener (`tools/auto-run/watch.mjs --as <identity> --role developer|lead|qa`, in the wake style your
   runtime supports; `docs/CONSTITUTION.md` section 6). CLI: `node tools/board.mjs comment <card> "..." --to <identity> --type review`,
   `thread <card>`, `inbox`.
-- A card has one of eleven statuses (`feedback backlog todo progress pr_review on_main spike_ready probe_needed on_prod_qa qa_later
-  done`; `docs/CONSTITUTION.md` section 4, `board/docs/STATUSES.md`). The Owner puts a card in To do when work should start (a user's
-  feedback card is the exception: the Lead triages it at once); the Lead hands it out and the card stays in To do; the Developer moves it
+- A card has one of ten statuses (`backlog todo progress pr_review on_main spike_ready probe_needed on_prod_qa qa_later
+  done`; `docs/CONSTITUTION.md` section 4, `board/docs/STATUSES.md`). The Owner puts a card in To do when work should start; the Lead
+  hands it out and the card stays in To do; the Developer moves it
   to In progress when it starts; the Lead sets PR reviewing when the pull request arrives, On Main at the merge and On Prod for QA at the
   release or deploy; the Owner moves cards to done after testing.
 - **Your identity is your key.** Set `BOARD_AS` to your own board name before the first command; the command line refuses to run without

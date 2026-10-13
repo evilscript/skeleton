@@ -18,6 +18,13 @@
     "timezone": "America/New_York",
     "replyLanguage": "English"
   },
+  "languages": {
+    "documents": "English",
+    "code": "English",
+    "commits": "English",
+    "product": "English",
+    "boardPages": "en"
+  },
   "roles": [
     {
       "role": "lead",
@@ -48,10 +55,10 @@
     "host": "cloudflare",
     "url": "https://acme-portal-board.your-subdomain.workers.dev",
     "defaultProject": "main",
-    "turnstileSiteKey": "",
     "cloudflareAccountId": "",
     "d1Id": "",
     "d1Name": "acme-portal-board",
+    "fileStorage": "d1",
     "r2Bucket": "",
     "workerName": "acme-portal-board",
     "keychainService": "acme-portal-board"

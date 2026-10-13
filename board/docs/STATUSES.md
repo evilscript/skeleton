@@ -6,14 +6,16 @@ the layers of a column can be moved up and down (kept in the browser, per projec
 
 ## Statuses (slug, label) and their columns
 
-The board page draws these columns: Backlog (Feedback on top of it while it has cards; `backlog`, `todo`), In progress (`progress`),
+There are ten: `backlog`, `todo`, `progress`, `pr_review`, `on_main`, `spike_ready`, `probe_needed`, `on_prod_qa`, `qa_later`, `done`
+(`STATUSES` in `public/board/statuses.js`, the one list the Worker, the page, the CLI and the tests read).
+
+The board page draws these columns: Backlog (`backlog`, `todo`), In progress (`progress`),
 PR submitted (`pr_review`, `spike_ready`, `on_main`), Ready for QA (`probe_needed`, `on_prod_qa`, `qa_later`), and Done as a panel. That is
 `VIEW_COLUMNS` in `public/board/statuses.js`. The stored column (`col`, the CLI's `--col`, the filters) is the one in the table below:
 `progress` there holds In progress and PR submitted together; the page only splits it.
 
 | Column | Status slug | Label | Means |
 |---|---|---|---|
-| Feedback | `feedback` | Feedback | a visitor's report; nobody has looked at it yet |
 | Backlog | `backlog` | Backlog | where every new card starts; nobody works on it |
 | Backlog | `todo` | To do | the Owner's go: work should start on it |
 | In progress | `progress` | In progress | a Developer is working on it |
@@ -39,7 +41,7 @@ The project's constitution (`docs/CONSTITUTION.md`, the board protocol) is the a
 ## How the data works
 
 - The cards table has a `status` column and a `col` column. `col` is the stored column key and follows the status in one place,
-  `columnOf` in `public/board/statuses.js`: `feedback` to `feedback`; `backlog` and `todo` to `backlog`; `progress`, `pr_review`,
+  `columnOf` in `public/board/statuses.js`: `backlog` and `todo` to `backlog`; `progress`, `pr_review`,
   `on_main` and `spike_ready` to `progress`; `probe_needed`, `on_prod_qa` and `qa_later` to `testing`; `done` to `done`. The Worker
   validates every status it is given against `STATUS_SLUGS`; the database has no CHECK on the status (migration 0013), so a new status
   needs no migration.
@@ -54,7 +56,7 @@ The project's constitution (`docs/CONSTITUTION.md`, the board protocol) is the a
 ## A project can show fewer statuses
 
 `PROJECT_LAYOUTS` in `public/board/statuses.js` lets one project hide statuses, rename some and put the layers of a column in another
-order. A project that is not listed shows all eleven, as above. The page draws only what the project keeps, and the Worker refuses a hidden
+order. A project that is not listed shows all ten, as above. The page draws only what the project keeps, and the Worker refuses a hidden
 status for that project's cards (create and change; `invalid_status`), so no card can sit in a layer nobody draws. The stored columns and
 the CLI words do not change.
 

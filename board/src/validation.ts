@@ -2,9 +2,6 @@ import { AGENT_NAMES, OWNER_ASSIGNEE } from "./agents.ts";
 import { commentBodyError } from "../public/board/comment-rules.js";
 export { MAX_COMMENT_BYTES, COMMENTS_PER_HOUR } from "../public/board/comment-rules.js";
 
-export const MAX_IMAGES = 6;
-export const MAX_FILE = 4 * 1024 * 1024;
-export const MAX_BODY = 25 * 1024 * 1024;
 export class InputError extends Error {
   code: string;
   status: number;
@@ -14,54 +11,11 @@ export class InputError extends Error {
     this.status = status;
   }
 }
-export function textField(
-  form: FormData,
-  name: string,
-  min: number,
-  max: number,
-): string {
-  const value = form.get(name);
-  if (value !== null && typeof value !== "string")
-    throw new InputError("invalid_fields");
-  const text = (value || "").trim();
-  if (text.length < min || text.length > max)
-    throw new InputError("invalid_fields");
-  return text;
-}
-export function fields(form: FormData) {
-  const requestId = textField(form, "requestId", 36, 36);
-  if (
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      requestId,
-    )
-  )
-    throw new InputError("invalid_fields");
-  // Everything the visitor writes is optional: the page only asks for at least
-  // one thing, see hasContent. An old page's "kind" is ignored.
-  return {
-    requestId,
-    title: textField(form, "title", 0, 120),
-    description: textField(form, "description", 0, 6000),
-    report: textField(form, "report", 0, 80000),
-    contact: textField(form, "contact", 0, 200),
-    locale: "en", // the pages are English only; the database column stays
-    token: textField(form, "cf-turnstile-response", 0, 2048),
-  };
-}
-type Written = { title: string; description: string; report: string; contact: string; locale: string };
-// At least one of the optional things must be there to submit.
-export function hasContent(data: Written, imageCount: number): boolean {
-  return Boolean(data.title || data.description || data.report || data.contact || imageCount > 0);
-}
-// The card's title: the visitor's own, else the first line of the
-// description, else what the card holds.
-export function cardTitle(data: Written, imageCount: number): string {
-  if (data.title) return data.title;
-  const line = data.description.split(/\r?\n/).map((l) => l.trim()).find(Boolean);
-  if (line) return line.length > 80 ? line.slice(0, 79) + "…" : line;
-  if (data.report) return "(diagnostics only)";
-  if (imageCount > 0) return `(screenshots only, ${imageCount})`;
-  return "(contact only)";
+// The language of the pages (the BOARD_LANGUAGE variable): a code like en or zh-CN, which names the pack
+// public/i18n/<code>.json. Anything that is not such a code, or nothing, is English.
+export const DEFAULT_LANGUAGE = "en";
+export function pageLanguage(value: unknown): string {
+  return typeof value === "string" && /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$/.test(value.trim()) ? value.trim() : DEFAULT_LANGUAGE;
 }
 export function imageExtension(type: string, bytes: Uint8Array): string {
   const b = bytes;
@@ -87,39 +41,6 @@ export function imageExtension(type: string, bytes: Uint8Array): string {
   )
     return "webp";
   throw new InputError("invalid_image");
-}
-export async function boundedForm(request: Request): Promise<FormData> {
-  if (!request.headers.get("content-type")?.startsWith("multipart/form-data;"))
-    throw new InputError("invalid_fields");
-  if (Number(request.headers.get("content-length")) > MAX_BODY)
-    throw new InputError("too_large", 413);
-  if (!request.body) throw new InputError("invalid_fields");
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let length = 0;
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    length += value.byteLength;
-    if (length > MAX_BODY) {
-      await reader.cancel();
-      throw new InputError("too_large", 413);
-    }
-    chunks.push(value);
-  }
-  const body = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return await new Response(body, {
-      headers: { "content-type": request.headers.get("content-type")! },
-    }).formData();
-  } catch {
-    throw new InputError("invalid_fields");
-  }
 }
 
 // Projects. A project's key (slug) is what URLs, the CLI and the page use; it

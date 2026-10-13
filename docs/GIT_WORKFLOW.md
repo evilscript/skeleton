@@ -42,8 +42,8 @@ else's changes, or automatically stash work that belongs to someone else.
 
 ## Branches and work trees
 
-- One card, one branch, one pull request. The branch is `<identity>/<card>-<slug>` (your board name, the card number, a short English
-  slug), started from freshly fetched `origin/{{DEFAULT_BRANCH}}` and never stacked on another pull request.
+- One card, one branch, one pull request. The branch is `<identity>/<card>-<slug>` (your board name, the card number, a short lowercase
+  ASCII slug), started from freshly fetched `origin/{{DEFAULT_BRANCH}}` and never stacked on another pull request.
 - Put the work tree in your own folder inside the project folder, `<Role> - <Name>/<card>`; never beside the project folder
   (`AGENTS.md`, "Folders and roles"; `git worktree move` moves an existing one). On a machine shared with the Lead, create it with
   `git worktree add "<Role> - <Name>/<card>" -b <identity>/<card>-<slug> origin/{{DEFAULT_BRANCH}}`. On another machine, one clone in
@@ -55,7 +55,7 @@ else's changes, or automatically stash work that belongs to someone else.
 ## Commits
 
 - Review `git diff` and stage only the files for the current card.
-- Commit titles are short and in the imperative; technical detail goes in the body. Everything is English.
+- Commit titles are short and in the imperative; technical detail goes in the body. Language: {{COMMIT_LANGUAGE}}.
 - A commit is routine; a push of your own branch is routine. A force push of your own pull request branch is allowed only before review
   has started or when the Lead asked for it; say so on the card.
 

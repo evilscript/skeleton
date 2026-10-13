@@ -49,8 +49,8 @@ function rename(db: DatabaseSync, project: number, from: string, to: string) {
   } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
 
-test("fresh migrations keep the composite chip key and install 0008 to 0013 after deployed migrations", () => {
-  assert.deepEqual(migrations.map((name) => name.slice(0, 4)), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013"]);
+test("fresh migrations keep the composite chip key and install 0008 to 0015 after deployed migrations", () => {
+  assert.deepEqual(migrations.map((name) => name.slice(0, 4)), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015"]);
   withDatabase((db) => {
     const columns = db.prepare("PRAGMA table_info(chips)").all();
     assert.deepEqual(columns.filter((row) => Number(row.pk) > 0).map((row) => row.name), ["project_id", "name"]);
@@ -164,7 +164,7 @@ test("0008 carries old hourly reservations and enforces one author quota across 
     const bucket = Math.floor(Date.parse(at) / 3_600_000);
     const key = "comment:developer:" + bucket;
     db.prepare("INSERT INTO rate_limits(key,count,expires_at) VALUES (?,59,?)").run(key, Date.parse(at) / 1000 + 7200);
-    db.exec("INSERT INTO rate_limits VALUES ('feedback:unrelated',500,0)");
+    db.exec("INSERT INTO rate_limits VALUES ('other:unrelated',500,0)");
     db.exec(readFileSync(new URL("../migrations/0008_quotas_chip_counts.sql", import.meta.url), "utf8"));
     const insert = db.prepare("INSERT INTO comments(project_id,card_no,author,body,created_at) VALUES (?,1,?,?,?)");
     assert.equal(db.prepare("SELECT count FROM comment_limits WHERE key=?").get(key)?.count, 59);
@@ -191,7 +191,7 @@ test("0008 carries old hourly reservations and enforces one author quota across 
 test("0011 gives every card a status from its old column, moves todo and later cards, and keeps counts, triggers and indexes", () => {
   withDatabase((db) => {
     secondProject(db);
-    const old = [["feedback", "feedback"], ["backlog", "backlog"], ["todo", "todo"], ["progress", "progress"], ["testing", "on_prod_qa"], ["later", "qa_later"], ["done", "done"]] as const;
+    const old = [["backlog", "backlog"], ["todo", "todo"], ["progress", "progress"], ["testing", "on_prod_qa"], ["later", "qa_later"], ["done", "done"]] as const;
     let no = 1;
     for (const [col] of old) {
       db.prepare("INSERT INTO cards(no,project_id,col,title,chips,created_at,updated_at) VALUES (?,1,?,?,'[\"Bug\"]',?,?)").run(no++, col, col, at, at);
@@ -210,12 +210,12 @@ test("0011 gives every card a status from its old column, moves todo and later c
     checkAgainstCards(db);
     const row = (n: number) => { const r = db.prepare("SELECT col,status FROM cards WHERE no=?").get(n) as { col: string; status: string }; return { col: r.col, status: r.status }; };
     assert.deepEqual(old.map(([col], i) => [col, row(i + 1).status]), old.map(([col, status]) => [col, status]));
-    assert.deepEqual(old.map((_, i) => row(i + 1).col), ["feedback", "backlog", "backlog", "progress", "testing", "testing", "done"]);
+    assert.deepEqual(old.map((_, i) => row(i + 1).col), ["backlog", "backlog", "progress", "testing", "testing", "done"]);
     assert.deepEqual(row(20), { col: "backlog", status: "todo" });
     assert.deepEqual(row(21), { col: "backlog", status: "todo" });
     // column_counts: live cards per project and stored column, and nothing for todo or later any more.
     const cc = Object.fromEntries(db.prepare("SELECT project_id||':'||col AS k, n FROM column_counts").all().map((r) => [r.k, r.n]));
-    assert.deepEqual(cc, { "1:feedback": 1, "1:backlog": 2, "1:progress": 1, "1:testing": 2, "1:done": 1, "2:backlog": 1 });
+    assert.deepEqual(cc, { "1:backlog": 2, "1:progress": 1, "1:testing": 2, "1:done": 1, "2:backlog": 1 });
     for (const r of db.prepare("SELECT project_id,col,n,(SELECT COUNT(*) FROM cards c WHERE c.project_id=column_counts.project_id AND c.col=column_counts.col AND c.removed_at IS NULL) AS expected FROM column_counts").all())
       assert.equal(r.n, r.expected, r.project_id + "/" + r.col);
     // The CHECK is in force, and a card inserted by the 0010 Worker (no status) gets the default.

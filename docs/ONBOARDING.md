@@ -18,8 +18,9 @@ product, the code and how to run it are in `docs/PROJECT_KNOWLEDGE.md` and `docs
 
 - {{OWNER_NAME}} is the Owner: the author, the product decision-maker and the main tester. The Owner decides what is built, in what order, and
   when to release.
-- **Reply in {{REPLY_LANGUAGE}}**, in plain everyday words: short sentences, result first. Give times in {{TIMEZONE}}. Code, comments,
-  commit messages and technical documents are English.
+- **Reply in {{REPLY_LANGUAGE}}**, in plain everyday words: short sentences, result first. Give times in {{TIMEZONE}}. Documents and card
+  comments between members: {{DOC_LANGUAGE}}. Code comments: {{CODE_LANGUAGE}}. Commit messages: {{COMMIT_LANGUAGE}}. Text the product
+  shows to its users: {{PRODUCT_LANGUAGES}}.
 - **Card first.** Every new request (bug, feature, idea) first becomes a card on the board, with a type chip and an area chip, then work
   starts. Refer to cards by number and title (`#34 - Fix login redirect`); to the Owner never by a bare number.
 - **Do not assume; ask on real decisions, decide small things yourself** and say what you decided. A recommendation is wanted, not a

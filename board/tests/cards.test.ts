@@ -50,22 +50,22 @@ test("the cards table's CHECKs list the same assignees, priorities, statuses and
   assert.ok(!/assignee TEXT[^,]*CHECK/.test(sql("0012_assignee_open.sql")), "0012 leaves the assignee free");
   assert.deepEqual(list(sql("0012_assignee_open.sql"), "priority"), [...PRIORITIES]);
   // `col` still allows the two old columns (a CHECK can't be changed without a rebuild) but no card keeps them.
-  assert.deepEqual(list(sql("0012_assignee_open.sql"), "col"), ["feedback", "backlog", "todo", "progress", "testing", "later", "done"]);
-  // 0011 and 0012 list the nine original statuses (history); since 0013 the database has no CHECK on the status:
+  assert.deepEqual(list(sql("0012_assignee_open.sql"), "col"), ["backlog", "todo", "progress", "testing", "later", "done"]);
+  // 0011 and 0012 list the eight original statuses (history); since 0013 the database has no CHECK on the status:
   // public/board/statuses.js is the rule, so a new status needs no migration.
-  const NINE = STATUS_SLUGS.filter((slug) => slug !== "spike_ready" && slug !== "probe_needed");
-  assert.deepEqual(list(sql("0012_assignee_open.sql"), "status"), NINE);
-  assert.deepEqual(list(sql("0011_card_status.sql"), "status"), NINE);
+  const EIGHT = STATUS_SLUGS.filter((slug) => slug !== "spike_ready" && slug !== "probe_needed");
+  assert.deepEqual(list(sql("0012_assignee_open.sql"), "status"), EIGHT);
+  assert.deepEqual(list(sql("0011_card_status.sql"), "status"), EIGHT);
   const open = sql("0013_status_open.sql");
   assert.ok(!/status TEXT[^;]*CHECK/.test(open), "0013 leaves the status free");
   assert.deepEqual(list(open, "priority"), [...PRIORITIES]);
-  assert.deepEqual(list(open, "col"), ["feedback", "backlog", "todo", "progress", "testing", "later", "done"]);
+  assert.deepEqual(list(open, "col"), ["backlog", "todo", "progress", "testing", "later", "done"]);
 });
 
-test("the eleven statuses, in their fixed order, and the column each one is shown in", () => {
-  assert.deepEqual(STATUS_SLUGS, ["feedback", "backlog", "todo", "progress", "pr_review", "on_main", "spike_ready", "probe_needed", "on_prod_qa", "qa_later", "done"]);
-  assert.deepEqual(COLUMN_KEYS, ["feedback", "backlog", "progress", "testing", "done"]);
-  assert.deepEqual(STATUSES.map((s) => s.col), ["feedback", "backlog", "backlog", "progress", "progress", "progress", "progress", "testing", "testing", "testing", "done"]);
+test("the ten statuses, in their fixed order, and the column each one is shown in", () => {
+  assert.deepEqual(STATUS_SLUGS, ["backlog", "todo", "progress", "pr_review", "on_main", "spike_ready", "probe_needed", "on_prod_qa", "qa_later", "done"]);
+  assert.deepEqual(COLUMN_KEYS, ["backlog", "progress", "testing", "done"]);
+  assert.deepEqual(STATUSES.map((s) => s.col), ["backlog", "backlog", "progress", "progress", "progress", "progress", "testing", "testing", "testing", "done"]);
   assert.deepEqual(statusesOf("backlog").map((s) => s.slug), ["backlog", "todo"]);
   assert.deepEqual(statusesOf("progress").map((s) => s.slug), ["progress", "pr_review", "on_main", "spike_ready"]);
   assert.deepEqual(statusesOf("testing").map((s) => s.slug), ["probe_needed", "on_prod_qa", "qa_later"]);
@@ -93,7 +93,7 @@ test("the CLI's help lists every status", () => {
 });
 
 test("the board page's columns: every status shown exactly once, inside its stored column", () => {
-  assert.deepEqual(VIEW_COLUMNS.map((c) => c.key), ["feedback", "backlog", "progress", "pr", "testing", "done"]);
+  assert.deepEqual(VIEW_COLUMNS.map((c) => c.key), ["backlog", "progress", "pr", "testing", "done"]);
   assert.deepEqual(VIEW_COLUMNS.find((c) => c.key === "pr")?.statuses, ["pr_review", "spike_ready", "on_main"]);
   assert.deepEqual(VIEW_COLUMNS.find((c) => c.key === "testing")?.statuses, ["probe_needed", "on_prod_qa", "qa_later"]);
   assert.deepEqual(VIEW_COLUMNS.flatMap((c) => c.statuses).sort(), [...STATUS_SLUGS].sort());
@@ -102,7 +102,7 @@ test("the board page's columns: every status shown exactly once, inside its stor
   for (const c of VIEW_COLUMNS) assert.equal(new Set(c.statuses.map((x) => columnOf(x))).size, 1, c.key);
 });
 
-test("a project can hide statuses and rename some; every other project shows all eleven as before", () => {
+test("a project can hide statuses and rename some; every other project shows all ten as before", () => {
   const layouts = PROJECT_LAYOUTS;
   const key = "layout-test"; // a layout registered for this test only
   layouts[key] = { hide: ["probe_needed", "qa_later"], labels: { on_prod_qa: "Ready for QA", spike_ready: "Spike done" }, order: { pr: ["pr_review", "on_main", "spike_ready"] } };

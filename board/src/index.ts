@@ -1,17 +1,16 @@
 import { AGENT_LIST, OWNER_ASSIGNEE } from "./agents.ts";
-import { actorName, actorOf, CLEAR_COOKIE, isOwnerKey, sessionCookie, type Actor, type AuthEnv } from "./auth.ts";
-import { assigneeValue as assignee, boundedForm, cardTitle, commentFields, DEFAULT_PROJECT, fields, hasContent, imageExtension, InputError, keyFromName, MAX_FILE, MAX_IMAGES, MAX_PROJECTS, priorityValue as priority, projectKey, projectName } from "./validation.ts";
+import { actorName, actorOf, CLEAR_COOKIE, FAILED_SIGN_IN_DELAY_MS, isOwnerPassword, passwordIsSet, sessionCookie, type Actor, type AuthEnv } from "./auth.ts";
+import { dropObjects, fileMode, fileStore, requireStore, type StorageEnv } from "./storage.ts";
+import { assigneeValue as assignee, commentFields, DEFAULT_PROJECT, imageExtension, InputError, keyFromName, MAX_PROJECTS, pageLanguage, priorityValue as priority, projectKey, projectName } from "./validation.ts";
 import { COMMENT_ERRORS } from "../public/board/comment-rules.js";
 import { COLUMN_KEYS, columnOf, projectStatuses, STATUS_SLUGS, statusFromWord, statusesOf } from "../public/board/statuses.js";
 
-interface Env extends AuthEnv {
+interface Env extends AuthEnv, StorageEnv {
   ASSETS: Fetcher;
-  DB: D1Database;
-  FILES?: R2Bucket; // absent when the board has no R2 bucket: files and screenshots are switched off
-  TURNSTILE_SITE_KEY: string;
-  TURNSTILE_SECRET: string;
   ENVIRONMENT: string;
   PROJECT_NAME: string; // public: the name the pages show (wrangler.jsonc vars)
+  BOARD_LANGUAGE?: string; // public: the language of the pages, the pack public/i18n/<code>.json (default en)
+  SIGN_IN_DELAY_MS?: string | number; // how long a failed sign-in waits before it answers (default FAILED_SIGN_IN_DELAY_MS; the tests set 0)
 }
 
 // A card's status says where it is in the work; the stored `col` is the
@@ -19,7 +18,6 @@ interface Env extends AuthEnv {
 // only place the two are tied together. `todo` and `later` stay in the cards
 // table's `col` CHECK but are no longer stored (migration 0011).
 type Column = (typeof COLUMN_KEYS)[number];
-const MAX_ATTACHMENT = 25 * 1024 * 1024;
 
 const HEADERS = { "cache-control": "no-store", "x-content-type-options": "nosniff" };
 function json(value: unknown, status = 200, extra: Record<string, string> = {}) {
@@ -31,25 +29,13 @@ async function digest(text: string) {
 }
 const now = () => new Date().toISOString();
 
-// File storage is optional. Without the FILES binding the file endpoints answer
-// 501 files_disabled, the feedback form takes no images, and nothing below
-// touches the bucket.
-function bucket(env: Env): R2Bucket {
-  if (!env.FILES) throw new InputError("files_disabled", 501);
-  return env.FILES;
-}
-// Best-effort cleanup of stored objects: nothing to do without a bucket, and a failure is not an error.
-async function dropObjects(env: Env, ids: string | string[]): Promise<void> {
-  if (env.FILES) await env.FILES.delete(ids).catch(() => {});
-}
-
-// The public feedback form files into the default project (id 1); other
-// projects get their cards from the board, the CLI or the agents.
-const FEEDBACK_PROJECT = 1;
+// File storage is optional (FILE_STORAGE, src/storage.ts): "r2", "d1" or none. Without
+// it the file endpoints answer 501 files_disabled. The code below asks fileStore(env)
+// and never looks at which mode it is.
 
 type CardRow = {
   no: number; project_id: number; col: Column; status: string; title: string; description: string; assignee: string | null; priority: string | null; chips: string;
-  sort: number; source: string; report: string; contact: string; locale: string;
+  sort: number; source: string;
   created_at: string; updated_at: string; updated_by: string;
   removed_at: string | null; removed_by: string | null; comment_count?: number;
 };
@@ -65,7 +51,6 @@ function cardOut(r: CardRow & { filestat?: string }) {
   return {
     no: r.no, col: r.col, status: statusOut(r), title: r.title, description: r.description, assignee: r.assignee, priority: r.priority ?? null,
     chips: JSON.parse(r.chips || "[]") as string[], sort: r.sort, source: r.source,
-    report: r.report, contact: r.contact, locale: r.locale,
     createdAt: r.created_at, updatedAt: r.updated_at, updatedBy: r.updated_by,
     shots: Number(shots), files: Number(files), thumb: thumb || null,
     removedAt: r.removed_at ?? null, removedBy: r.removed_by ?? null, cut: Boolean((r as { cut?: number }).cut),
@@ -234,11 +219,11 @@ async function renameProject(env: Env, actor: Actor, key: string, b: Record<stri
 
 // ---------------------------------------------------------------- cards
 
-const CARD_COLUMNS = "c.no, c.project_id, c.col, c.status, c.title, c.assignee, c.priority, c.chips, c.sort, c.source, c.contact, c.locale, c.created_at, c.updated_at, c.updated_by, c.removed_at, c.removed_by, c.comment_count";
+const CARD_COLUMNS = "c.no, c.project_id, c.col, c.status, c.title, c.assignee, c.priority, c.chips, c.sort, c.source, c.created_at, c.updated_at, c.updated_by, c.removed_at, c.removed_by, c.comment_count";
 // The board list carries a description preview; a card's page has it all.
 // A card's files are read once, from the files_card_stats index alone (it was
 // three passes, each also reading every file's table row).
-const LIST_SQL = `SELECT ${CARD_COLUMNS}, substr(c.description, 1, 2000) AS description, length(c.description) > 2000 AS cut, '' AS report,
+const LIST_SQL = `SELECT ${CARD_COLUMNS}, substr(c.description, 1, 2000) AS description, length(c.description) > 2000 AS cut,
   (SELECT COALESCE(SUM(f.kind = 'screenshot'), 0) || ' ' || COALESCE(SUM(f.kind = 'file'), 0) || ' ' || COALESCE(MIN(CASE WHEN f.kind = 'screenshot' THEN f.created_at || ' ' || f.id END), '')
     FROM files f WHERE f.card_no = c.no) AS filestat
   FROM cards c`;
@@ -299,7 +284,7 @@ async function listCards(env: Env, url: URL) {
 // A card's page: the card, its files and its activity in one batch.
 async function getCard(env: Env, no: number) {
   const [card, files, activity] = await env.DB.batch([
-    env.DB.prepare(LIST_SQL.replace("substr(c.description, 1, 2000) AS description, length(c.description) > 2000 AS cut, '' AS report", "c.description, 0 AS cut, c.report, (SELECT slug FROM projects WHERE id = c.project_id) AS project_key") + " WHERE c.no = ?").bind(no),
+    env.DB.prepare(LIST_SQL.replace("substr(c.description, 1, 2000) AS description, length(c.description) > 2000 AS cut", "c.description, 0 AS cut, (SELECT slug FROM projects WHERE id = c.project_id) AS project_key") + " WHERE c.no = ?").bind(no),
     env.DB.prepare("SELECT id, kind, name, type, size, created_at AS createdAt, created_by AS createdBy FROM files WHERE card_no = ? ORDER BY created_at").bind(no),
     env.DB.prepare("SELECT actor, action, detail, at FROM activity WHERE card_no = ? ORDER BY id DESC LIMIT 100").bind(no),
   ]);
@@ -534,7 +519,7 @@ function sniffImage(type: string, bytes: Uint8Array): boolean {
 }
 
 async function addFiles(env: Env, actor: Actor, no: number, request: Request) {
-  const store = bucket(env);
+  const store = requireStore(env);
   const exists = await env.DB.prepare("SELECT no FROM cards WHERE no = ?").bind(no).first();
   if (!exists) throw new InputError("not_found", 404);
   let form: FormData;
@@ -544,13 +529,14 @@ async function addFiles(env: Env, actor: Actor, no: number, request: Request) {
   if (!entries.length || entries.length > 10) throw new InputError("invalid_fields");
   const by = actorName(actor), at = now(), out: { id: string; name: string }[] = [];
   for (const f of entries) {
-    if (!f.size || f.size > MAX_ATTACHMENT) throw new InputError("too_large", 413);
+    if (!f.size) throw new InputError("invalid_fields");
+    if (f.size > store.maxBytes) throw new InputError("file_too_large", 413);
     const bytes = new Uint8Array(await f.arrayBuffer());
     const type = f.type || "application/octet-stream";
     if (kind === "screenshot" && !sniffImage(type, bytes)) throw new InputError("invalid_image");
     const id = crypto.randomUUID();
     const name = (f.name || "file").replace(/[\\/\r\n"]/g, "_").slice(0, 200);
-    await store.put(id, bytes, { httpMetadata: { contentType: type } });
+    await store.put(id, bytes, type);
     try {
       await env.DB.batch([
         env.DB.prepare("INSERT INTO files(id, card_no, kind, name, type, size, created_at, created_by) VALUES (?,?,?,?,?,?,?,?)").bind(id, no, kind, name, type, f.size, at, by),
@@ -567,13 +553,13 @@ async function addFiles(env: Env, actor: Actor, no: number, request: Request) {
 }
 
 async function getFile(env: Env, id: string) {
-  const store = bucket(env);
+  const store = requireStore(env);
   const row = await env.DB.prepare("SELECT name, type, kind FROM files WHERE id = ?").bind(id).first<{ name: string; type: string; kind: string }>();
   if (!row) throw new InputError("not_found", 404);
-  const obj = await store.get(id);
-  if (!obj) throw new InputError("not_found", 404);
+  const body = await store.get(id);
+  if (!body) throw new InputError("not_found", 404);
   const image = row.kind === "screenshot" && /^image\/(png|jpeg|webp|gif)$/.test(row.type);
-  return new Response(obj.body, {
+  return new Response(body, {
     headers: {
       "content-type": image ? row.type : "application/octet-stream",
       "content-disposition": `${image ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(row.name)}`,
@@ -654,90 +640,45 @@ async function chipsApi(env: Env, actor: Actor, request: Request, name: string |
   throw new InputError("not_found", 404);
 }
 
-// ---------------------------------------------------------------- feedback
+// ---------------------------------------------------------------- sign-in
 
-// Visitors' submissions: a card in the feedback column with the "User
-// feedback" chip, their screenshots, diagnostics and optional contact.
-// Turnstile, bounded multipart, image signatures, hashed-IP quota and retry
-// de-duplication.
-async function submitFeedback(request: Request, env: Env): Promise<Response> {
-  const url = new URL(request.url);
+// The owner signs in with the password they chose (the OWNER_PASSWORD secret, at least 12 characters) and gets a signed session
+// cookie. A person's password can be guessed, so a source (the client address, hashed with the session secret) may try 5 times in
+// a window of 15 minutes; then the sign-in answers 429 too_many_attempts until the window is over. The attempt is counted before it
+// is checked, in one statement, so attempts that arrive together are counted one by one; a right password clears the count; a wrong
+// one waits a moment before it is answered.
+const SIGN_IN_ATTEMPTS = 5;
+const SIGN_IN_WINDOW = 15 * 60; // seconds
+async function signIn(request: Request, env: Env, url: URL): Promise<Response> {
   if (request.headers.get("origin") !== url.origin) throw new InputError("invalid_origin", 403);
+  const b = await body(request);
+  // Local development only: sign in as the owner without the password.
   const local = env.ENVIRONMENT === "development" && ["localhost", "127.0.0.1"].includes(url.hostname);
-  if (!env.DB || (!local && (!env.TURNSTILE_SITE_KEY || !env.TURNSTILE_SECRET))) throw new InputError("unavailable", 503);
-  const form = await boundedForm(request);
-  const data = fields(form);
-  // Everything is optional, but not nothing at all.
-  const imageCount = form.getAll("images").length;
-  // Without file storage the form has no image field; a request that carries images anyway is refused, not dropped silently.
-  if (imageCount && !env.FILES) throw new InputError("files_disabled", 501);
-  if (!hasContent(data, imageCount)) throw new InputError("invalid_fields");
-  const ip = request.headers.get("CF-Connecting-IP");
-  if (!ip && !local) throw new InputError("unavailable", 503);
-  const fingerprint = await digest(`${env.TURNSTILE_SECRET || "local"}:${ip || "local"}`);
-  const requestKey = await digest(`${fingerprint}:${data.requestId}`);
-  const previous = await env.DB.prepare("SELECT no FROM cards WHERE request_key = ?").bind(requestKey).first<{ no: number }>();
-  if (previous) return json({ id: `#${previous.no}` });
-  if (!local) {
-    if (!data.token) throw new InputError("captcha", 403);
-    const check = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
-      method: "POST",
-      body: JSON.stringify({ secret: env.TURNSTILE_SECRET, response: data.token, remoteip: ip, idempotency_key: data.requestId }),
-      headers: { "content-type": "application/json" },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!check.ok) throw new InputError("unavailable", 503);
-    const result = (await check.json()) as { success: boolean; hostname?: string; action?: string };
-    if (!result.success || result.hostname !== url.hostname || result.action !== "feedback") throw new InputError("captcha", 403);
-  }
-  const entries = form.getAll("images");
-  if (entries.length > MAX_IMAGES) throw new InputError("too_many_images");
-  const images = [];
-  for (const entry of entries) {
-    if (typeof entry === "string" || !entry.size || entry.size > MAX_FILE) throw new InputError("invalid_image");
-    const bytes = new Uint8Array(await entry.arrayBuffer());
-    const ext = imageExtension(entry.type, bytes);
-    images.push({ bytes, ext, type: entry.type, size: entry.size });
-  }
+  if (local && b.dev === true) return json({ name: OWNER_ASSIGNEE.name }, 200, { "set-cookie": await sessionCookie(env) });
+  // The password is compared exactly as it was typed: no trimming.
+  if (typeof b.password !== "string" || !b.password || b.password.length > 500) throw new InputError("invalid_fields");
+  // A missing or too short password (or no session secret) locks the sign-in out.
+  if (!env.SESSION_SECRET || !passwordIsSet(env)) throw new InputError("sign_in_locked", 503);
+  const source = await digest(`${env.SESSION_SECRET}:${request.headers.get("CF-Connecting-IP") || "local"}`);
   const t = Math.floor(Date.now() / 1000);
-  const rate = await env.DB.prepare(
-    "INSERT INTO rate_limits(key,count,expires_at) VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET count=count+1 RETURNING count",
-  ).bind(`${fingerprint}:${Math.floor(t / 600)}`, t + 1200).first<{ count: number }>();
-  if (!rate || rate.count > 5) throw new InputError("rate_limit", 429);
-
-  const at = now();
-  const ids = images.map(() => crypto.randomUUID());
-  try {
-    if (images.length) {
-      const store = bucket(env);
-      for (const [i, image] of images.entries()) await store.put(ids[i], image.bytes, { httpMetadata: { contentType: image.type } });
-    }
-    const chips = ["User feedback"];
-    // One transaction: the card gets the next number and its screenshots
-    // point at it through the request key.
-    await env.DB.batch([
-      env.DB.prepare(
-        `INSERT INTO cards(no, project_id, col, status, title, description, chips, sort, source, report, contact, locale, request_key, created_at, updated_at, updated_by)
-         SELECT (SELECT COALESCE(MAX(no),0)+1 FROM cards), ${FEEDBACK_PROJECT}, 'feedback', 'feedback', ?, ?, ?, (SELECT COALESCE(MAX(sort),0)+1 FROM cards WHERE project_id = ${FEEDBACK_PROJECT} AND col = 'feedback'),
-           'feedback', ?, ?, ?, ?, ?, ?, 'visitor'`,
-      ).bind(cardTitle(data, images.length), data.description, JSON.stringify(chips), data.report, data.contact, data.locale, requestKey, at, at),
-      bump(env, FEEDBACK_PROJECT, "feedback", 1),
-      ...images.map((image, i) =>
-        env.DB.prepare("INSERT INTO files(id, card_no, kind, name, type, size, created_at, created_by) SELECT ?, no, 'screenshot', ?, ?, ?, ?, 'visitor' FROM cards WHERE request_key = ?")
-          .bind(ids[i], `screenshot-${i + 1}.${image.ext}`, image.type, image.size, at, requestKey),
-      ),
-      env.DB.prepare("INSERT INTO activity(card_no, project_id, actor, action, detail, at) SELECT no, project_id, 'visitor', 'create', 'feedback', ? FROM cards WHERE request_key = ?").bind(at, requestKey),
-    ]);
-  } catch (error) {
-    const existing = await env.DB.prepare("SELECT no FROM cards WHERE request_key = ?").bind(requestKey).first<{ no: number }>().catch(() => undefined);
-    // Keep the images when we can't tell whether the card was committed.
-    if (existing === null && ids.length) await dropObjects(env, ids);
-    if (existing) return json({ id: `#${existing.no}` });
-    throw error;
+  const [counted] = await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO sign_in_attempts(key, count, expires_at) VALUES (?, 1, ?)
+       ON CONFLICT(key) DO UPDATE SET count = CASE WHEN expires_at <= ? THEN 1 ELSE count + 1 END, expires_at = CASE WHEN expires_at <= ? THEN excluded.expires_at ELSE expires_at END
+       RETURNING count, expires_at`,
+    ).bind(source, t + SIGN_IN_WINDOW, t, t),
+    env.DB.prepare("DELETE FROM sign_in_attempts WHERE expires_at <= ? AND key <> ?").bind(t, source),
+  ]);
+  const attempt = counted.results[0] as { count: number; expires_at: number } | undefined;
+  if (!attempt) throw new InputError("unavailable", 503);
+  if (attempt.count > SIGN_IN_ATTEMPTS) return json({ error: "too_many_attempts" }, 429, { "retry-after": String(Math.max(1, attempt.expires_at - t)) });
+  if (!(await isOwnerPassword(env, b.password))) {
+    const wait = Number(env.SIGN_IN_DELAY_MS ?? FAILED_SIGN_IN_DELAY_MS);
+    await new Promise((resolve) => setTimeout(resolve, Number.isFinite(wait) && wait >= 0 ? wait : FAILED_SIGN_IN_DELAY_MS));
+    throw new InputError("wrong_password", 403);
   }
-  await env.DB.prepare("DELETE FROM rate_limits WHERE expires_at < ?").bind(t).run().catch(() => {});
-  const card = await env.DB.prepare("SELECT no FROM cards WHERE request_key = ?").bind(requestKey).first<{ no: number }>();
-  return json({ id: card ? `#${card.no}` : "" }, 201);
+  await env.DB.prepare("DELETE FROM sign_in_attempts WHERE key = ?").bind(source).run();
+  return json({ name: OWNER_ASSIGNEE.name }, 200, { "set-cookie": await sessionCookie(env) });
 }
 
 // ---------------------------------------------------------------- routing
@@ -745,26 +686,21 @@ async function submitFeedback(request: Request, env: Env): Promise<Response> {
 async function api(request: Request, env: Env, url: URL): Promise<Response> {
   const path = url.pathname, method = request.method;
   if (path === "/api/config" && method === "GET") {
+    return json({ development: env.ENVIRONMENT === "development" && ["localhost", "127.0.0.1"].includes(url.hostname) });
+  }
+  // Public: the name the pages show (the PROJECT_NAME var), the language of the pages (BOARD_LANGUAGE) and the file storage
+  // (FILE_STORAGE: whether there is any, where, and how big one file may be), for the sign-in page and the board's attach controls.
+  if (path === "/api/info" && method === "GET") {
+    const store = fileStore(env);
     return json({
-      siteKey: env.TURNSTILE_SITE_KEY || "",
-      development: env.ENVIRONMENT === "development" && ["localhost", "127.0.0.1"].includes(url.hostname),
+      projectName: env.PROJECT_NAME || "Board",
+      files: Boolean(store),
+      fileStorage: fileMode(env),
+      maxFileBytes: store?.maxBytes ?? 0,
+      language: pageLanguage(env.BOARD_LANGUAGE),
     });
   }
-  // Public: the name the pages show (the PROJECT_NAME var) and whether file storage is on (the FILES binding),
-  // for the feedback form, the sign-in page and the board's attach controls.
-  if (path === "/api/info" && method === "GET") return json({ projectName: env.PROJECT_NAME || "Board", files: Boolean(env.FILES) });
-  if (path === "/api/feedback" && method === "POST") return submitFeedback(request, env);
-  if (path === "/api/session" && method === "POST") {
-    if (request.headers.get("origin") !== url.origin) throw new InputError("invalid_origin", 403);
-    const b = await body(request);
-    // Local development only: sign in as the owner without the key.
-    const local = env.ENVIRONMENT === "development" && ["localhost", "127.0.0.1"].includes(url.hostname);
-    if (local && b.dev === true) return json({ name: OWNER_ASSIGNEE.name }, 200, { "set-cookie": await sessionCookie(env) });
-    // The owner key (the OWNER_KEY secret) makes the caller the owner: a signed session cookie.
-    const given = str(b.key, 1, 500);
-    if (!env.SESSION_SECRET || !(await isOwnerKey(env, given))) throw new InputError("not_owner", 403);
-    return json({ name: OWNER_ASSIGNEE.name }, 200, { "set-cookie": await sessionCookie(env) });
-  }
+  if (path === "/api/session" && method === "POST") return signIn(request, env, url);
   if (path === "/api/session" && method === "DELETE") return json({ ok: true }, 200, { "set-cookie": CLEAR_COOKIE });
 
   const actor = await actorOf(env, request);
@@ -820,8 +756,8 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     try {
-      if (url.pathname === "/") return Response.redirect(url.origin + "/feedback/", 302);
-      if (url.pathname === "/feedback" || url.pathname === "/board") return Response.redirect(url.origin + url.pathname + "/", 301);
+      if (url.pathname === "/") return Response.redirect(url.origin + "/board/", 302);
+      if (url.pathname === "/board") return Response.redirect(url.origin + url.pathname + "/", 301);
       if (url.pathname.startsWith("/api/")) return await api(request, env, url);
       return await env.ASSETS.fetch(request);
     } catch (error) {

@@ -41,9 +41,8 @@ test('lead hears everybody but itself; qa hears reviews and its own mail', () =>
 	assert.equal(relevant(qa, { author: 'agent-atlas', type: 'note', to: 'agent-check', cardNo: 1 }, {}), true);
 });
 
-test('lead: new todo and feedback cards are events, backlog is quiet, moves into todo are events', () => {
+test('lead: new todo cards are events, backlog is quiet, moves into todo are events', () => {
 	assert.equal(cardEvents(lead, card({ status: 'todo' }), undefined).length, 1);
-	assert.equal(cardEvents(lead, card({ status: 'feedback' }), undefined).length, 1);
 	assert.deepEqual(cardEvents(lead, card({ status: 'backlog' }), undefined), []);
 	const moved = cardEvents(lead, card({ status: 'todo' }), { status: 'backlog', assignee: null, priority: null });
 	assert.match(moved[0], /moved backlog -> todo/);

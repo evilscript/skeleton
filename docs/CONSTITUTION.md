@@ -18,15 +18,19 @@ Lead's scripts). Who holds which role today is the generated roster `docs/TEAM.m
   4 to 7 are the working rules: the Lead keeps them current and tells the Owner what changed. Section 8 (lessons) only grows: **at the
   end of every auto-run, and after any mistake that cost time, the Lead adds the lesson** (what happened, the rule, how it is
   enforced). If this document and the Owner's words disagree, the Owner's words win and the document is corrected.
-- **Language and time.** Agents talk to the Owner in {{REPLY_LANGUAGE}} and give times in {{TIMEZONE}}. Code, comments, commit messages
-  and technical documents are in English.
+- **Language and time.** Agents talk to the Owner in {{REPLY_LANGUAGE}} and give times in {{TIMEZONE}}. The Owner chose the other
+  languages at setup: project documents and the comments members write on cards are in {{DOC_LANGUAGE}}, code comments in
+  {{CODE_LANGUAGE}}, commit messages in {{COMMIT_LANGUAGE}}, and the text the product shows to its users in {{PRODUCT_LANGUAGES}}. The
+  Owner can change any of them at any time by saying so; the Lead then updates this line and `AGENTS.md`. Identifiers stay as they are
+  whatever the language: status slugs, board commands, branch names (lowercase ASCII), file names that tools read. The few fixed lines
+  the kit's scripts post on cards (start, review and merge notices) are English, because other scripts look for them.
 
 ## 1. Roles
 
 | Role | Decides | Does | Never |
 |---|---|---|---|
 | **Owner** (the person; board name `{{OWNER_BOARD_NAME}}`, used as assignee and as comment target) | what is built, in what order, the priority of a card, when to release or deploy, every product question, which agent holds which role | product and project management; tests the result; writes cards; moves the Owner's own cards and every card to done after testing | |
-| **Lead** (project manager and development lead) | how it is built, the order of a queue, which Developer takes which card, what merges | plans the work; triages new and feedback cards; hands cards out; reviews and merges every pull request from any Developer; runs the minimum-scope checks at merge and the full suite when deploying; sets a card to PR reviewing when its pull request arrives, to On Main at the merge and to On Prod for QA at the release or the deploy; deploys the board under a standing word if the Owner granted one (section 3); releases and deploys **when the Owner says so**; keeps this document and the playbooks current; adds the lessons. May also write code (small fixes while merging, cards the Owner gives it); the checklist and the checks then still apply | releases or deploys without the Owner's word; touches the Owner's cards |
+| **Lead** (project manager and development lead) | how it is built, the order of a queue, which Developer takes which card, what merges | plans the work; reads new cards and asks the Owner about unclear ones; hands cards out; reviews and merges every pull request from any Developer; runs the minimum-scope checks at merge and the full suite when deploying; sets a card to PR reviewing when its pull request arrives, to On Main at the merge and to On Prod for QA at the release or the deploy; deploys the board under a standing word if the Owner granted one (section 3); releases and deploys **when the Owner says so**; keeps this document and the playbooks current; adds the lessons. May also write code (small fixes while merging, cards the Owner gives it); the checklist and the checks then still apply | releases or deploys without the Owner's word; touches the Owner's cards |
 | **Developer** (any number of them) | small implementation choices on its own cards | the cards assigned to it once the Lead has marked them to start (the `assign` comment): moves the card from todo to progress when it starts and comments `started`, works on its own branch, opens one pull request per card, runs its own checks, resolves its pull request's conflicts with `{{DEFAULT_BRANCH}}`, reports by comment | merges, deploys, tags, releases, publishes anything, takes another Developer's card, changes what the Lead or the Owner decided, touches the Owner's cards |
 | **QA** (an agent on a test machine; its tool is `tools/auto-run/pr-check.mjs`; the role in full: `docs/roles/qa.md`) | nothing about the product; how many pull requests it tests side by side, within the limits of its machine | starts when a Developer's `review` comment on a card says its pull request is submitted (a reworked one is announced by a new `review` comment), merges the head onto the latest `{{DEFAULT_BRANCH}}` in a scratch work tree, runs the smallest set of checks that can reach the change with the project's check command, writes the result on the card (a note to the Developer) and on the pull request (label `QA: pass` or `QA: fail`), and when a check fails finds out whose it is (the pull request's, the default branch's, or a flake) and says so; the full suite on request | change code or a pull request, push, merge, tag, release, edit a card's status, assignee or priority, create cards, hold or move a credential (its key is placed on its machine by the Owner in person; the board refuses everything but `note`, `question` and `blocked` comments from it), touch the personal files of whoever else uses its machine, take more of the machine than it was allowed |
 
@@ -111,13 +115,13 @@ Standing rules of the project, each with its reason. They change only with the O
     Lead.** Every Developer has tickets like any other.
 16. **The test method goes on the ticket.** A card whose change has to be tested by a person carries its test steps in a comment on the
     card itself (what to do, what should happen), not only in a document. A card with nothing to test says so.
-17. **Feedback is triaged by the Lead at once.** A card that arrives in `feedback` (a user's report) is read as soon as the listener
-    shows it, with one of three outcomes. (a) Clear and workable (a bug with enough to find it, a request with one reading): the Lead
-    moves it to `todo` and hands it out in the same minute. (b) Not clear (two readings that give different results, a missing step to
-    reproduce, a product choice): the Lead moves it to `backlog`, writes a `question` to the Owner on the card with a recommendation and
-    tells the Owner in chat at once. (c) A report that is really a setting or already works: the Lead answers on the card with where to
-    change it and leaves the card in `feedback` for the Owner. The Lead never moves a card the Owner moved, never reopens a done one and
-    never sets `progress`.
+17. **A card that is not clear is asked about, not guessed.** The Lead reads a new card as soon as the listener shows it, with one of
+    three outcomes. (a) Clear and workable (a bug with enough to find it, a request with one reading) and in `todo`: the Lead hands it
+    out in the same minute. (b) Not clear (two readings that give different results, a missing step to reproduce, a product choice): the
+    card stays in `backlog` or `todo`, the Lead writes a `question` to the Owner on the card with a recommendation and tells the Owner in
+    chat at once, and hands nothing out until the Owner has answered. (c) A request that is really a setting or already works: the Lead
+    answers on the card with where to change it and leaves the card for the Owner. The Lead never moves a card the Owner moved, never
+    reopens a done one and never sets `progress`.
 18. **A card whose QA fails goes round again.** When the Owner comments what to change and moves the card to `progress`, that is a
     rework request, not work that has started. The Lead reads the Owner's newest comments, hands the card to a Developer with an `assign`
     comment that quotes the Owner's words (still one card, one pull request), and leaves the status as the Owner set it until the pull request
@@ -156,9 +160,8 @@ The stored column follows the status. The board page shows some columns split fu
 
 | Stored column | Status (slug, label) | Meaning | Set by |
 |---|---|---|---|
-| Feedback | `feedback` ("Feedback") | users' reports | the users, through the public feedback form. The Lead triages every one at once (section 3, rule 17) |
-| Backlog | `backlog` ("Backlog") | where every new card starts; the Owner's pool: nobody starts work from it | the Owner; the Lead, for a feedback card whose requirement is unclear (with the question to the Owner) |
-| Backlog | `todo` ("To do") | the Owner's go: work should start; top to bottom is the Owner's order; the Lead hands out these cards, and only these | the Owner; the Lead, for a feedback card that can be worked on |
+| Backlog | `backlog` ("Backlog") | where every new card starts; the Owner's pool: nobody starts work from it | the Owner |
+| Backlog | `todo` ("To do") | the Owner's go: work should start; top to bottom is the Owner's order; the Lead hands out these cards, and only these | the Owner |
 | In progress | `progress` ("In progress") | a Developer is working | **the Developer**, when it starts (with its `started` comment). The Lead never sets progress: after the `assign` comment the card stays in todo |
 | In progress | `pr_review` ("PR reviewing") | a pull request is open and the Lead reviews it | the Lead, when the `review` comment arrives |
 | In progress | `on_main` ("On Main") | merged into `{{DEFAULT_BRANCH}}`, not released or deployed yet | the Lead at the merge |
@@ -171,7 +174,7 @@ The stored column follows the status. The board page shows some columns split fu
 The Owner's own cards are moved by the Owner alone. A card sent back with "changes needed" goes back to `progress`: the Developer sets it when
 it takes the card up again. A Lead that works on a card of its own moves that card itself. A board change is deployed at once under a
 standing word, so the Lead sets its card from `pr_review` straight to `on_prod_qa` after the deploy. A project may show fewer statuses
-than these eleven (`board/docs/STATUSES.md`).
+than these ten (`board/docs/STATUSES.md`).
 
 **The same minute (the Lead's duty).** A card's status follows the fact in the same minute and the same command batch as the action that
 made it true; nobody has to remind the Lead. The moves: a pull request arrives, so `pr_review`; the Lead merges, so `on_main` (a board

@@ -43,6 +43,61 @@ test('a config with problems is refused with every problem listed', () => {
   } finally { cleanup(dir); }
 });
 
+test('file storage and language answers are validated', () => {
+  const c = example();
+  c.board.fileStorage = 'dropbox';
+  c.languages.boardPages = 'not a code';
+  c.languages.code = 5;
+  let dir = setup(c);
+  try {
+    const r = apply(dir, '--check');
+    assert.equal(r.code, 2);
+    assert.match(r.err, /board\.fileStorage must be one of none, d1, r2/);
+    assert.match(r.err, /languages\.boardPages/);
+    assert.match(r.err, /languages\.code must be text/);
+  } finally { cleanup(dir); }
+  const d = example();
+  d.board.fileStorage = 'r2';
+  d.board.r2Bucket = '';
+  dir = setup(d);
+  try {
+    const r = apply(dir, '--check');
+    assert.equal(r.code, 2);
+    assert.match(r.err, /needs board\.r2Bucket/);
+  } finally { cleanup(dir); }
+});
+
+test('the language answers reach the documents and the board files', () => {
+  const c = example();
+  c.owner.replyLanguage = 'Spanish';
+  c.languages = { documents: 'Portuguese', code: 'French', commits: 'German', product: 'Italian and Dutch', boardPages: 'es' };
+  const dir = setup(c);
+  try {
+    const r = apply(dir);
+    assert.equal(r.code, 0, r.err + r.out);
+    assert.match(r.out, /no language pack board\/public\/i18n\/es\.json yet/);
+    const agents = readFileSync(join(dir, 'AGENTS.md'), 'utf8');
+    for (const word of ['Spanish', 'Portuguese', 'French', 'German', 'Italian and Dutch']) assert.ok(agents.includes(word), `AGENTS.md lacks ${word}`);
+    for (const f of ['docs/CONSTITUTION.md', 'docs/ONBOARDING.md', 'docs/DEVELOPING.md', 'docs/GIT_WORKFLOW.md', 'docs/onboarding/onboarding-new-member-dev.md']) {
+      assert.ok(!/\{\{[A-Z_]+\}\}/.test(readFileSync(join(dir, f), 'utf8')), `${f} still has a token`);
+    }
+    assert.ok(!/Everything is English|are English\b/.test(readFileSync(join(dir, 'docs/GIT_WORKFLOW.md'), 'utf8') + readFileSync(join(dir, 'docs/ONBOARDING.md'), 'utf8')), 'no hardcoded English rule is left');
+    assert.match(readFileSync(join(dir, 'board', 'wrangler.jsonc'), 'utf8'), /"BOARD_LANGUAGE": "es"/);
+  } finally { cleanup(dir); }
+});
+
+test('a config without the languages block gets English defaults', () => {
+  const c = example();
+  delete c.languages;
+  const dir = setup(c);
+  try {
+    assert.equal(apply(dir).code, 0);
+    const agents = readFileSync(join(dir, 'AGENTS.md'), 'utf8');
+    assert.match(agents, /project\s+documents and card comments between members in English/);
+    assert.match(readFileSync(join(dir, 'board', 'wrangler.jsonc'), 'utf8'), /"BOARD_LANGUAGE": "en"/);
+  } finally { cleanup(dir); }
+});
+
 test('a dry run writes nothing', () => {
   const dir = setup(example());
   try {
@@ -60,6 +115,7 @@ test('the first run replaces tokens, generates files and refuses to run twice', 
   c.board.d1Id = 'test-d1-id';
   c.board.cloudflareAccountId = 'test-account';
   c.board.url = 'https://board.example.com';
+  c.board.fileStorage = 'r2';
   c.board.r2Bucket = 'acme-portal-board-files';
   const dir = setup(c);
   try {
@@ -86,6 +142,7 @@ test('the first run replaces tokens, generates files and refuses to run twice', 
     assert.match(wrangler, /"account_id": "test-account"/);
     assert.match(wrangler, /"pattern": "board\.example\.com"/);
     assert.match(wrangler, /"bucket_name": "acme-portal-board-files"/);
+    assert.match(wrangler, /"FILE_STORAGE": "r2"/);
     assert.ok(!/\{\{/.test(wrangler));
     // member folders, .gitignore, README
     assert.equal(JSON.parse(readFileSync(join(dir, 'Dev - Bolt', '.claude', 'settings.local.json'), 'utf8')).env.BOARD_AS, 'agent-bolt');
@@ -102,16 +159,39 @@ test('the first run replaces tokens, generates files and refuses to run twice', 
   } finally { cleanup(dir); }
 });
 
-test('a workers.dev address drops the custom-domain route, a missing account id and a missing R2 bucket drop their lines', () => {
+test('a workers.dev address drops the custom-domain route, a missing account id and a non-R2 storage mode drop their lines', () => {
   const c = example();
   const dir = setup(c);
   try {
     assert.equal(apply(dir, '--board-only').code, 0);
     const wrangler = readFileSync(join(dir, 'board', 'wrangler.jsonc'), 'utf8');
+    assert.match(wrangler, /"FILE_STORAGE": "d1"/);
     assert.ok(!wrangler.includes('"routes"'));
     assert.match(wrangler, /"workers_dev": true/);
     assert.ok(!wrangler.includes('"account_id"'));
-    assert.ok(!wrangler.includes('r2_buckets'), 'no bucket configured: no R2 binding');
+    assert.ok(!wrangler.includes('r2_buckets'), 'd1 storage: no R2 binding');
+  } finally { cleanup(dir); }
+});
+
+test('an older config with only an R2 bucket name means R2 storage, and none means none', () => {
+  const c = example();
+  delete c.board.fileStorage;
+  c.board.r2Bucket = 'legacy-files';
+  let dir = setup(c);
+  try {
+    assert.equal(apply(dir, '--board-only').code, 0);
+    const wrangler = readFileSync(join(dir, 'board', 'wrangler.jsonc'), 'utf8');
+    assert.match(wrangler, /"FILE_STORAGE": "r2"/);
+    assert.match(wrangler, /"bucket_name": "legacy-files"/);
+  } finally { cleanup(dir); }
+  const d = example();
+  delete d.board.fileStorage;
+  dir = setup(d);
+  try {
+    assert.equal(apply(dir, '--board-only').code, 0);
+    const wrangler = readFileSync(join(dir, 'board', 'wrangler.jsonc'), 'utf8');
+    assert.match(wrangler, /"FILE_STORAGE": "none"/);
+    assert.ok(!wrangler.includes('r2_buckets'));
   } finally { cleanup(dir); }
 });
 

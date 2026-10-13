@@ -10,17 +10,13 @@
 DROP TRIGGER chips_rename;
 CREATE TABLE cards_new (
   no INTEGER PRIMARY KEY,
-  col TEXT NOT NULL CHECK (col IN ('feedback','backlog','todo','progress','testing','later','done')),
+  col TEXT NOT NULL CHECK (col IN ('backlog','todo','progress','testing','later','done')),
   title TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   assignee TEXT,                           -- validated by the Worker (src/agents.ts)
   chips TEXT NOT NULL DEFAULT '[]',        -- JSON array of chip names
   sort REAL NOT NULL DEFAULT 0,            -- order in a column, higher first
-  source TEXT NOT NULL DEFAULT 'board',    -- board | feedback | migrated
-  report TEXT NOT NULL DEFAULT '',         -- feedback: diagnostics the visitor pasted
-  contact TEXT NOT NULL DEFAULT '',        -- feedback: optional, never public
-  locale TEXT NOT NULL DEFAULT '',
-  request_key TEXT UNIQUE,                 -- feedback: retry de-duplication
+  source TEXT NOT NULL DEFAULT 'board',    -- board | migrated
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   updated_by TEXT NOT NULL DEFAULT '',
@@ -31,9 +27,9 @@ CREATE TABLE cards_new (
   priority TEXT CHECK (priority IN ('minor','major','critical','blocker')),
   status TEXT NOT NULL DEFAULT 'backlog'      -- validated by the Worker (public/board/statuses.js)
 );
-INSERT INTO cards_new(no, col, title, description, assignee, chips, sort, source, report, contact, locale, request_key,
+INSERT INTO cards_new(no, col, title, description, assignee, chips, sort, source,
     created_at, updated_at, updated_by, removed_at, removed_by, comment_count, project_id, priority, status)
-  SELECT no, col, title, description, assignee, chips, sort, source, report, contact, locale, request_key,
+  SELECT no, col, title, description, assignee, chips, sort, source,
     created_at, updated_at, updated_by, removed_at, removed_by, comment_count, project_id, priority, status FROM cards;
 DROP TABLE cards;
 ALTER TABLE cards_new RENAME TO cards;

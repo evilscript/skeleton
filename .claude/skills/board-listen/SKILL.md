@@ -93,7 +93,7 @@ By the card's state, not by the comment alone:
      `node tools/board.mjs comment <card> "<Name> (HH:MM): ..." --to <the Lead's board name> --type started`
      with the 3 to 5 concrete things you will change. On a vague card those are your reading of it; go ahead without waiting. Long text
      goes in a file with `--body-file`.
-  3. A branch `<your board name>/<card>-<short-english-name>` from the latest `origin/{{DEFAULT_BRANCH}}`. Work by `AGENTS.md` and
+  3. A branch `<your board name>/<card>-<short-lowercase-ascii-name>` from the latest `origin/{{DEFAULT_BRANCH}}`. Work by `AGENTS.md` and
      `docs/DEVELOPING.md`. Run your own checks (minimum scope: {{MIN_SCOPE}}; command `{{CHECK_COMMAND}}`) and every check a shared
      mechanism you touched can reach. Do not run the full suite.
   4. Push the branch and open **one pull request** with the template (`.github/pull_request_template.md`). **Never merge it, never

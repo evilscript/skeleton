@@ -3,17 +3,13 @@
 -- writers can't get the same number.
 CREATE TABLE cards (
   no INTEGER PRIMARY KEY,
-  col TEXT NOT NULL CHECK (col IN ('feedback','backlog','progress','testing','later','done')),
+  col TEXT NOT NULL CHECK (col IN ('backlog','progress','testing','later','done')),
   title TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   assignee TEXT CHECK (assignee IN ('lead','developer')),
   chips TEXT NOT NULL DEFAULT '[]',        -- JSON array of chip names
   sort REAL NOT NULL DEFAULT 0,            -- order in a column, higher first
-  source TEXT NOT NULL DEFAULT 'board',    -- board | feedback | migrated
-  report TEXT NOT NULL DEFAULT '',         -- feedback: diagnostics the visitor pasted
-  contact TEXT NOT NULL DEFAULT '',        -- feedback: optional, never public
-  locale TEXT NOT NULL DEFAULT '',
-  request_key TEXT UNIQUE,                 -- feedback: retry de-duplication
+  source TEXT NOT NULL DEFAULT 'board',    -- board | migrated
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   updated_by TEXT NOT NULL DEFAULT ''
@@ -26,7 +22,7 @@ CREATE TABLE chips (
   sort INTEGER NOT NULL DEFAULT 0
 );
 
--- Screenshots and attached files; the bytes live in R2 under `id`.
+-- Screenshots and attached files; the bytes live under `id` in the R2 bucket or in file_blobs (0014).
 CREATE TABLE files (
   id TEXT PRIMARY KEY,
   card_no INTEGER NOT NULL,
@@ -53,4 +49,4 @@ CREATE INDEX activity_card ON activity(card_no, id);
 CREATE TABLE rate_limits (key TEXT PRIMARY KEY, count INTEGER NOT NULL, expires_at INTEGER NOT NULL);
 
 INSERT INTO chips(name, color, sort) VALUES
-  ('Bug', '#dc2626', 1), ('Feature', '#2563eb', 2), ('User feedback', '#7c3aed', 3);
+  ('Bug', '#dc2626', 1), ('Feature', '#2563eb', 2);

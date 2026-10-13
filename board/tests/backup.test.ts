@@ -78,7 +78,7 @@ function withSql(sql: string, body: (path: string) => void) {
 test("restore validates independent chip and column counts for equal names in different projects", () => {
   withSql(fixtureSql(), (path) => {
     const { run, localPaths } = fixtureRunner("");
-    assert.deepEqual({ ...verifyRestore(path, run) }, { cards: 3, comments: 2, files: 1, chips: 4 });
+    assert.deepEqual({ ...verifyRestore(path, run) }, { cards: 3, comments: 2, files: 1, chips: 3 });
     assert.ok(localPaths.every((local) => !existsSync(local)));
   });
 });
@@ -86,7 +86,7 @@ test("restore validates independent chip and column counts for equal names in di
 test("restore still verifies an older single-project export without incremental statistics", () => {
   withSql(fixtureSql(true), (path) => {
     const { run } = fixtureRunner("");
-    assert.deepEqual({ ...verifyRestore(path, run) }, { cards: 1, comments: 1, files: 1, chips: 3 });
+    assert.deepEqual({ ...verifyRestore(path, run) }, { cards: 1, comments: 1, files: 1, chips: 2 });
   });
 });
 
@@ -133,7 +133,7 @@ test("verified copies alone permit retention cleanup and the same UTC date never
     const first = backup({ directory, date: day, run });
     const second = backup({ directory, date: day, run });
     assert.equal(first.sha256, second.sha256);
-    assert.deepEqual({ ...first.localRestore }, { cards: 3, comments: 2, files: 1, chips: 4 });
+    assert.deepEqual({ ...first.localRestore }, { cards: 3, comments: 2, files: 1, chips: 3 });
     assert.equal(calls.filter((args) => args[1] === "export").length, 1);
     assert.deepEqual(readdirSync(directory).sort(), [keep, `board-${day}.sql`, `board-${day}.sql.json`, "other.sql"]);
     const manifest = JSON.parse(readFileSync(first.file + ".json", "utf8"));

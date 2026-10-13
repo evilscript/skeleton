@@ -1,20 +1,21 @@
 import { AGENT_NAMES, LIMITED_AGENTS, OWNER_ASSIGNEE } from "./agents.ts";
-// Who is calling: the owner (the owner key, exchanged once for a signed session
-// cookie) or an agent (a bearer key per agent). Visitors on /feedback are nobody:
-// they can only create a feedback card. The agents are listed in src/agents.ts; a
-// key is optional for each of them. The owner is always OWNER_ASSIGNEE from the
-// same file.
+// Who is calling: the owner (the owner's password, exchanged once for a signed
+// session cookie) or an agent (a bearer key per agent). Anyone else is nobody and
+// can read nothing. The agents are listed in src/agents.ts; a key is optional for
+// each of them. The owner is always OWNER_ASSIGNEE from the same file.
 export { AGENT_NAMES };
 export type Actor = { kind: "owner"; name: string } | { kind: "agent"; name: string; limited?: boolean };
 
 export interface AuthEnv {
-  OWNER_KEY: string; // the owner's key, at least 32 characters (a Worker secret)
+  OWNER_PASSWORD: string; // the password the owner chose, at least MIN_PASSWORD characters (a Worker secret)
   SESSION_SECRET: string;
   AGENT_KEYS: string; // JSON: { "<agent name>": "<key>", ... }, one per agent in src/agents.ts
 }
 
 const SESSION_DAYS = 30;
 const MIN_KEY = 32;
+export const MIN_PASSWORD = 12;
+export const FAILED_SIGN_IN_DELAY_MS = 600; // a wrong password waits this long before it is answered (src/index.ts signIn)
 const enc = new TextEncoder();
 
 function b64url(bytes: ArrayBuffer | Uint8Array): string {
@@ -41,11 +42,18 @@ async function hmac(secret: string, text: string): Promise<string> {
   return b64url(await crypto.subtle.sign("HMAC", key, enc.encode(text)));
 }
 
-// Is this the owner's key? Both sides are hashed first, so the comparison takes
-// the same time whatever was typed and the key's length is not revealed.
-export async function isOwnerKey(env: AuthEnv, given: string): Promise<boolean> {
-  if (!env.OWNER_KEY || env.OWNER_KEY.length < MIN_KEY) return false;
-  const [a, b] = await Promise.all([given, env.OWNER_KEY].map(async (k) => b64url(await crypto.subtle.digest("SHA-256", enc.encode(k)))));
+// Can anyone sign in at all? The password is a Worker secret of at least MIN_PASSWORD
+// characters; one that is missing or shorter locks the sign-in out (a typo in the
+// secret must never leave a weak door open).
+export function passwordIsSet(env: AuthEnv): boolean {
+  return typeof env.OWNER_PASSWORD === "string" && Array.from(env.OWNER_PASSWORD).length >= MIN_PASSWORD;
+}
+// Is this the owner's password? Compared exactly (no trimming). Both sides are hashed
+// first, so the comparison takes the same time whatever was typed and the password's
+// length is not revealed.
+export async function isOwnerPassword(env: AuthEnv, given: string): Promise<boolean> {
+  if (!passwordIsSet(env)) return false;
+  const [a, b] = await Promise.all([given, env.OWNER_PASSWORD].map(async (k) => b64url(await crypto.subtle.digest("SHA-256", enc.encode(k)))));
   return same(a, b);
 }
 
@@ -78,7 +86,7 @@ function fromKey(env: AuthEnv, request: Request): Actor | null {
     return null;
   }
   for (const name of AGENT_NAMES) {
-    if (keys[name] && keys[name].length >= 32 && same(keys[name], m[1])) return { kind: "agent", name, limited: LIMITED_AGENTS.includes(name) };
+    if (keys[name] && keys[name].length >= MIN_KEY && same(keys[name], m[1])) return { kind: "agent", name, limited: LIMITED_AGENTS.includes(name) };
   }
   return null;
 }

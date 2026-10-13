@@ -36,7 +36,7 @@ text is handled (languages), how settings or configuration are added, and anythi
 
 General rules that hold everywhere:
 
-- Comments explain why, not what, in English, matching the density around them.
+- Comments explain why, not what, in {{CODE_LANGUAGE}}, matching the density around them.
 - A new feature comes with checks. A fix comes with a check that failed before it.
 - Do not reformat code you are not changing; a diff shows the card's change and nothing else.
 - Everything outward-facing (text a user reads) is reviewed as carefully as the code.

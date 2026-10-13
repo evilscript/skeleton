@@ -40,10 +40,11 @@ flowchart LR
    git clone https://github.com/evilscript/skeleton.git my-project
    cd my-project
    ```
-2. Open the folder in your AI tool (Claude Code, Codex, ...) and say: **"Read START_HERE.md and set this project up."**
-3. Answer the questions. The agent writes `skeleton.config.json`, applies it, links your GitHub repository, and (if you want it) deploys the board to your own Cloudflare account.
+2. Create a free Cloudflare account (https://dash.cloudflare.com/sign-up: an email address, no card, no domain). This is the one account you create yourself.
+3. Open the folder in your AI tool (Claude Code, Codex, ...) and say: **"Read START_HERE.md and set this project up."**
+4. Answer the questions (about 25, with defaults; languages, GitHub, team, folders, board). The agent writes `skeleton.config.json`, applies it, links your GitHub repository, and deploys the board to your own Cloudflare account. You only do four short things yourself: log in to Cloudflare, choose a name for your free address, choose the board password, and sign in.
 
-You run every login and every command that creates a secret yourself, in your own terminal. Agents are told never to ask for, store or print a credential.
+You run every login and every command that creates a secret yourself, in your own terminal. Agents are told never to ask for, store or print a credential, and your board password is never typed into the chat.
 
 ## What is inside
 
@@ -57,7 +58,7 @@ docs/                  constitution, onboarding, roles, git workflow, project te
 tools/board.mjs        runs the board's command line from anywhere in the repository
 tools/auto-run/        the listener (watch), assign, merge, and the QA check script
 tools/setup/           first-run helpers: check the machine, apply the answers
-board/                 the board: a Cloudflare Worker + D1 database, web page, feedback form and CLI
+board/                 the board: a Cloudflare Worker + D1 database, web page and CLI
 ```
 
 ## Tests
@@ -70,7 +71,7 @@ cd board && npm install && npm run check && npm test   # the board
 ## Requirements
 
 - Git, Node 20+ (Node 22.14+ to build and deploy the board) and the GitHub CLI (`gh`), logged in.
-- For the board: a free Cloudflare account (an email address is enough; no domain is needed, the board gets a free `workers.dev` address). Optional: an R2 bucket for attachments (Cloudflare asks for a payment card for R2), a Turnstile widget for a public feedback form, and two GitHub secrets to deploy the board on every push. See [docs/BOARD_HOSTING.md](docs/BOARD_HOSTING.md).
+- A free Cloudflare account, **required** (an email address is enough: no card, no domain; the board gets a free `workers.dev` address). It is the one account you create yourself; the agent does the rest. Optional: an R2 bucket for big attachments (Cloudflare asks for a payment card for R2; by default files are kept in the board's database) and one GitHub secret to deploy the board on every push. See [docs/BOARD_HOSTING.md](docs/BOARD_HOSTING.md).
 - Any AI assistant that can read files and run commands.
 
 ## The board

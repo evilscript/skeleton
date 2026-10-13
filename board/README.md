@@ -1,57 +1,93 @@
 # Board
 
 A small task board for a team of one human (the **Owner**) and any number of AI agents: one Cloudflare Worker with a D1 database
-(cards, comments, chips, activity), an optional R2 bucket (screenshots and attachments), a web page, a public feedback form and a
-command-line tool. It runs on Cloudflare's free tier, needs no domain and no build step, and the Owner signs in with a key, not with a
-third-party account.
+(cards, comments, chips, activity), optional file storage (screenshots and attachments), a web page and a command-line tool. It runs on
+Cloudflare's free tier, needs no domain and no build step, and the Owner signs in with a password they chose, not with a third-party
+account. Nothing is public except the sign-in page.
 
 Cards have a number (global), a status, chips, a priority, an assignee and comments. **Typed, addressed card comments are the channel
 agents use to talk to each other and to the Owner.** The Owner reads and writes on the web page; agents use `cli/board.mjs`.
 
 | Path | Who | What |
 |---|---|---|
-| `/feedback/` | anyone, no sign-in | write a bug report or feature request (with screenshots when the board has file storage); it becomes a card in the **Feedback** column of the default project. Visitors see nothing else. |
-| `/board/` | the Owner (the owner key) | the board, one project at a time |
-| `/` | | redirects to `/feedback/` |
-| `/api/...` | the Owner's session or an agent's key | the JSON API the page and the CLI use (`GET /api/info` and `/api/config` are public) |
+| `/board/` | the Owner (the password) | the board, one project at a time |
+| `/` | | redirects to `/board/` |
+| `/api/...` | the Owner's session or an agent's key | the JSON API the page and the CLI use (`GET /api/info`, `GET /api/config` and the sign-in `POST /api/session` need no credentials) |
 
-The name the pages show comes from the Worker's public variable `PROJECT_NAME` (`GET /api/info`); it falls back to "Board". The same
-answer says whether the board has file storage: `{ "projectName": "...", "files": true }`.
+The name the page shows comes from the Worker's public variable `PROJECT_NAME` (`GET /api/info`); it falls back to "Board". The same
+answer carries the file storage and the language of the page:
+`{ "projectName": "...", "files": true, "fileStorage": "d1", "maxFileBytes": 1572864, "language": "en" }`.
 
 ## Signing in
 
-- **The Owner** signs in on the page at `/board/` with the **owner key**: a secret of at least 32 characters (`OWNER_KEY`, a Worker
-  secret) that `npm run setup:secrets` makes. The Owner reads it on the machine that ran the script, in their own terminal:
-  `node cli/board.mjs owner-key` prints it, `node cli/board.mjs owner-key --copy` puts it on the clipboard and prints nothing secret. It is
-  the Owner's credential (full rights, including deleting a card for good): only the Owner runs that command, never an agent. It prints a
-  warning, refuses to print when its output is not a terminal, refuses `--copy` without an interactive terminal, and refuses to run when
-  `BOARD_AS` is set (an agent session). The key is looked up like an agent's: the macOS Keychain (service `board.keychainService`,
-  account `owner.boardName` from `skeleton.config.json`, default `owner`), then the key file `~/.boardkit/<project slug>/keys/<that name>`.
-- The page sends the key once (`POST /api/session` with `{ "key": "..." }`); a wrong key is answered `403 not_owner`. A right one sets a
-  signed cookie (HMAC with `SESSION_SECRET`, `HttpOnly`, `Secure`, `SameSite=Lax`, 30 days). Writes with the cookie also need the page's
-  own origin and the `x-board` header, so another site cannot make the Owner's browser change cards. **Sign out** (`DELETE /api/session`)
-  clears it. Everywhere on the board the Owner is `OWNER_ASSIGNEE` from `src/agents.ts` (default `owner`, label "Owner").
-- **Agents** never use the cookie: each has its own key (`Authorization: Bearer ...`) and uses the command line. The owner key is not
-  accepted as an agent key.
-- A Worker secret cannot be read back from Cloudflare. If the key is lost, run `npm run setup:secrets` again: it makes a new owner key,
-  new agent keys and a new `SESSION_SECRET` (every signed-in browser is signed out).
-- Local development only (`wrangler dev`, `ENVIRONMENT=development` on `localhost`): the page also offers a development sign-in that needs no
-  key.
+- **The Owner** signs in on the page at `/board/` with a **password the Owner chooses**: at least 12 characters, typed twice at a hidden
+  prompt of `npm run setup:secrets` in the Owner's own terminal. It becomes the Worker secret `OWNER_PASSWORD`. It is never echoed, never
+  put on a command line and never written to a file or a key store: the Owner knows it, and nothing on any machine remembers it. An agent
+  never sees it and never runs the script.
+- The page sends the password once (`POST /api/session` with `{ "password": "..." }`). It is compared exactly as typed (no trimming) in
+  constant time. A right one sets a signed cookie (HMAC with `SESSION_SECRET`, `HttpOnly`, `Secure`, `SameSite=Lax`, 30 days); a wrong one
+  is answered `403 wrong_password` after a short fixed delay. Writes with the cookie also need the page's own origin and the `x-board`
+  header, so another site cannot make the Owner's browser change cards. **Sign out** (`DELETE /api/session`) clears the cookie. Everywhere
+  on the board the Owner is `OWNER_ASSIGNEE` from `src/agents.ts` (default `owner`, label "Owner").
+- **A password can be guessed, so the sign-in is throttled.** One source (the client address, hashed with `SESSION_SECRET`; the address
+  itself is never stored) may fail 5 times in 15 minutes. After that the sign-in answers `429 too_many_attempts` with a `Retry-After`
+  header (in seconds) until the 15 minutes, counted from the first failure, are over, even for the right password. The counters are rows
+  of `sign_in_attempts` (migration `0015`); a right password clears them, and expired rows are deleted. Attempts that arrive together are
+  counted one by one, so a burst of guesses gets no more than 5.
+- **The secret must be at least 12 characters.** A missing or shorter `OWNER_PASSWORD` (or a missing `SESSION_SECRET`) locks the sign-in
+  out: it answers `503 sign_in_locked` and nobody gets in, whatever is typed.
+- **Agents** never use the cookie: each has its own key (`Authorization: Bearer ...`, at least 32 characters) and uses the command line.
+  The password is not accepted as an agent key.
+- **A lost password is replaced, not recovered:** `npm run setup:secrets -- --password-only` asks for a new one and makes a new
+  `SESSION_SECRET`, which signs every browser out. The agent keys are not touched. `-- --keys-only` renews the agent keys and nothing else.
+- Local development only (`wrangler dev`, `ENVIRONMENT=development` on `localhost`): the page also offers a development sign-in that needs
+  no password and is not counted by the throttle.
 
-## File storage is optional
+## File storage: none, d1 or r2
 
-Screenshots, attachments and the feedback form's images are stored in an R2 bucket. Cloudflare asks for a payment card before R2 can be
-switched on, even for free-tier use, so the board works without it: leave `board.r2Bucket` empty in `skeleton.config.json` and
-`node tools/setup/apply.mjs --board-only` drops the `r2_buckets` line from the rendered `wrangler.jsonc`. Without the `FILES` binding:
+Screenshots and attachments need somewhere to live. The Worker variable `FILE_STORAGE` says where, and the first-run questionnaire sets
+it (`board.fileStorage` in `skeleton.config.json`; `node tools/setup/apply.mjs` renders it into `wrangler.jsonc`):
 
-- `POST /api/cards/<n>/files` and `GET /api/files/<id>` answer `501 { "error": "files_disabled" }`; deleting a file or purging a card still
-  cleans the database, and nothing calls the bucket.
-- `GET /api/info` answers `files: false`. The board page hides the screenshot and file rows of a card and the image counts; the public
-  feedback form hides its image field, and a request that carries images anyway is refused with the same `files_disabled`.
-- `node cli/board.mjs attach` fails with a clear message; every other command works as before.
+| `FILE_STORAGE` | Where the bytes live | Cost and setup | Limits | Choose it when |
+|---|---|---|---|---|
+| `none` (the default) | nowhere | nothing | no screenshots, no attachments | you only want cards and comments |
+| `d1` | a table of the board's own database (`file_blobs`, migration `0014`) | free; no extra service and no payment card; nothing to set up | one file at most 1.5 MB (D1 keeps a row under 2 MB); the database has its own size limit (500 MB on the free plan), and the files count against it | you want pictures without a card on file; ordinary screenshots fit once the page has shrunk them |
+| `r2` | an object in a Cloudflare R2 bucket | R2 asks for a payment card even for free-tier use; create the bucket (`npx wrangler r2 bucket create <name>`) and put its name in `board.r2Bucket` | one file at most 25 MB | you attach big files, or expect many |
 
-To add storage later: create the bucket (`npx wrangler r2 bucket create <name>`), put its name in `board.r2Bucket`, run
-`node tools/setup/apply.mjs --board-only` and deploy again.
+A missing or unknown `FILE_STORAGE` is `none`, with one exception: a Worker that has the `FILES` R2 binding and no `FILE_STORAGE` variable
+(a board deployed before the variable existed) behaves as `r2`. `r2` with no bucket is `none`.
+
+- **What the Worker does.** `POST /api/cards/<n>/files` and `GET /api/files/<id>` work in `d1` and `r2` the same way: the Worker asks one
+  small store (`src/storage.ts`) and never branches on the mode. A file over the limit is answered `413 file_too_large`; with `none` both
+  endpoints answer `501 { "error": "files_disabled" }`. Deleting a file or purging a card deletes the bytes too (the `file_blobs` rows in
+  `d1`, the objects in `r2`); with `none` it only cleans the database. `GET /api/info` answers `files`, `fileStorage` and `maxFileBytes`.
+- **The board page** hides the screenshot and file rows of a card and the image counts when `files` is false. With `d1` the page shrinks a
+  picture that is over the limit before it uploads it (the longest side at most 1600 px, saved as JPEG at lower and lower quality until it
+  fits); a file that is not a picture, or a picture that still does not fit, is refused with a clear message, and the Worker's limit stays
+  the real guard.
+- **`node cli/board.mjs attach`** asks `GET /api/info` first and says plainly when the board has no storage or the file is over its limit.
+- **Switching later.** Change `board.fileStorage` (and, for `r2`, `board.r2Bucket`), run `node tools/setup/apply.mjs --board-only`, deploy
+  again. **Switching does not move files:** a file stays where it was written, and the new mode cannot read it, so a card's old
+  screenshots show as broken until you add them again (or switch back). Going from `d1` to another mode leaves the old bytes in
+  `file_blobs`; `npx wrangler d1 execute DB --remote --command "DELETE FROM file_blobs"` frees the space once you are sure.
+  A backup of a `d1` board holds the files; one of an `r2` board does not (see [docs/MAINTENANCE.md](docs/MAINTENANCE.md)).
+
+## Language of the page
+
+The page's language is the Worker variable `BOARD_LANGUAGE` (`board.language` in `skeleton.config.json`, rendered by
+`node tools/setup/apply.mjs`; `GET /api/info` answers it as `language`; a missing or invalid value is `en`). Every text the page shows is
+in a pack, `public/i18n/<code>.json`: a flat dictionary of stable ids to texts, with `{name}` placeholders. English (`en.json`) and
+Simplified Chinese (`zh-CN.json`) are shipped. The page loads the pack for the language, uses English for any key the pack lacks, sets
+`<html lang>` from it, formats dates and sizes with `Intl` in that language and stays hidden until the pack is applied (it shows after
+2.5 seconds whatever happens).
+
+**Adding a language:** copy `public/i18n/en.json` to `public/i18n/<code>.json` (a language code such as `fr` or `pt-BR`), translate the
+values and keep the ids and every `{placeholder}` exactly as they are, set `board.language` to the code, run
+`node tools/setup/apply.mjs --board-only` and deploy. An AI agent can do the translation: give it `en.json` and the code. `npm test`
+checks that a pack has exactly the keys of English, the same placeholders for each, and that every id the page uses exists.
+
+Server answers stay codes (`wrong_password`, `file_too_large`, ...): the page maps the ones a person can meet to the pack's messages.
+The command-line tool stays in English on purpose, because it is the agents' protocol.
 
 ## Statuses and columns
 
@@ -60,20 +96,19 @@ where).
 
 | Column | Statuses (slug, label) |
 |---|---|
-| Feedback | `feedback` Feedback |
 | Backlog | `backlog` Backlog, `todo` To do |
 | In progress | `progress` In progress, `pr_review` PR reviewing, `spike_ready` Spike report ready, `on_main` On Main (the page draws the last three as their own column, PR submitted) |
 | Ready for QA | `probe_needed` Owner check needed, `on_prod_qa` On Prod for QA, `qa_later` QA later |
 | Done | `done` Done |
 
-A new card starts in backlog; the Owner moves one to todo when work should start on it. The stored `col` (the column key: `feedback
-backlog progress testing done`) follows the status in one place, `columnOf` in `public/board/statuses.js`, which the Worker, the page,
+A new card starts in backlog; the Owner moves one to todo when work should start on it. The stored `col` (the column key: `backlog
+progress testing done`) follows the status in one place, `columnOf` in `public/board/statuses.js`, which the Worker, the page,
 the CLI and the tests share. The old column words `todo`, `later` and `testing` are still accepted as input (`col: "todo"` is the status
 todo, `later` is `qa_later`, `testing` is `on_prod_qa`; any other column name means its first status).
 
 On the page each column is drawn as one bordered **layer** per status (always there, even empty). Drag a card onto a layer to set its
 status, inside a layer to put it higher or lower; the arrow buttons on a layer's header move the layer inside its column (the order is
-kept in the browser, per project). Feedback sits above Backlog and only shows while it has cards. Done is not on the board: the top bar's
+kept in the browser, per project). Done is not on the board: the top bar's
 Done button (it shows the count and takes dropped cards) opens a floating panel that loads when opened and unloads when closed. The top
 bar filters by assignee, priority and chip, and switches between the system's colours, light and dark.
 
@@ -88,7 +123,6 @@ starts with the chips Bug and Feature.
 - **Card numbers are global**, not per project: `#12` names one card everywhere, so a number never needs its project. A new project's
   first card gets the next free number.
 - **Chips are per project**, and so are the comment feed, the unread mark and the change check.
-- The public feedback form always files into the default project (id 1).
 - API: `?project=<key>` on the cards, chips, version, activity and comments calls (the default project when left out); `?project=all` on
   `/api/comments`. `GET/POST /api/projects`, `PATCH /api/projects/<key>` (name). Create a card in a project with `"project": "<key>"` in
   the body. Projects are not deleted, and cards cannot move from one project to another.
@@ -138,8 +172,8 @@ node cli/board.mjs new "Rack the servers" --project home-lab
 export BOARD_PROJECT=home-lab                       # or set the project once
 ```
 
-`node cli/board.mjs` with no command (or `--help`) prints the full command list, which includes `owner-key`: that one is the Owner's, for the
-page's sign-in (see "Signing in"), and an agent never runs it. `list`, `new`, `chips`, `feed` and `version` work in one project
+`node cli/board.mjs` with no command (or `--help`) prints the full command list. The Owner's password has no command: the CLI never knows
+it (see "Signing in"). `list`, `new`, `chips`, `feed` and `version` work in one project
 (`--project`, else `BOARD_PROJECT`, else `board.defaultProject`, else `main`). `list` leaves the done cards out (it says how many) unless
 you ask with `--col done` or `--all`. Cards are found by number in every project; `inbox` is yours across all projects. In a project made
 from this template, `node tools/board.mjs <command>` runs the same tool from any checkout.
@@ -149,13 +183,17 @@ else. Only the Owner can delete a card for good.
 
 ## Layout
 
-- `src/index.ts` - routing, cards, chips, files, feedback submission.
-- `src/auth.ts` - the owner key check, the Owner's session cookie, agent keys.
-- `src/agents.ts` - the agents (see above). `src/validation.ts` - input rules and the feedback form limits.
-- `public/feedback/`, `public/board/` - the two pages (no build step). `public/board/statuses.js` is the status table.
+- `src/index.ts` - routing, cards, chips, files, comments, the sign-in and its throttling.
+- `src/auth.ts` - the owner password check, the Owner's session cookie, agent keys.
+- `src/storage.ts` - where file bytes live: `none`, `d1` or `r2` (one small store, the same calls in each).
+- `src/agents.ts` - the agents (see above). `src/validation.ts` - input rules.
+- `public/board/` - the board page (no build step). `public/board/statuses.js` is the status table (ten statuses).
+- `public/shared/i18n.js` - the loader of the language packs; `public/shared/shrink.js` - shrinks a picture before an upload;
+  `public/i18n/<code>.json` - the packs (`en`, `zh-CN`).
 - `cli/board.mjs`, `cli/usage.mjs`, `cli/config.mjs` - the command line (the config reader uses plain `fs`; nothing outside `board/` is imported).
 - `migrations/` - the D1 schema, applied in order (`0005` adds projects, `0006` per-column counts, `0007` the files index, `0008` quotas and
-  stored chip counts, `0009` the priority, `0011` the card status, `0013` an open status column).
+  stored chip counts, `0009` the priority, `0011` the card status, `0013` an open status column, `0014` the file bytes of a `d1` board,
+  `0015` the sign-in throttle).
 - `scripts/setup-secrets.sh`, `scripts/add-agent.sh` - credentials (run by a person, never by an agent); `scripts/backup.mjs` - manual
   verified backups.
 - `wrangler.jsonc.tmpl` - the Worker configuration template; `tools/setup/apply.mjs` renders it to `wrangler.jsonc`.
@@ -192,48 +230,43 @@ run; no agent asks for, stores or types one. The default path needs no domain an
    `workers_dev` lines of the Worker configuration for a `*.workers.dev` address. *Optional, a custom domain:* set `board.url` to
    `https://board.example.com` on a domain whose DNS is in the same Cloudflare account; the template's `custom_domain` route creates the DNS
    record on deploy.
-3. **Decide the names.** In the config's `board` section: `workerName`, `d1Name`, `url` (step 2) and `r2Bucket`, which is **optional**:
-   leave it empty for a board without screenshots and attachments (see "File storage is optional" above). `project.name` becomes the
-   `PROJECT_NAME` the pages show.
+3. **Decide the names and the options.** In the config's `board` section: `workerName`, `d1Name`, `url` (step 2), `fileStorage` (`none`,
+   `d1` or `r2`, see "File storage" above), `r2Bucket` (only for `r2`) and `language` (`en`, `zh-CN`, ... see "Language of the page").
+   `project.name` becomes the `PROJECT_NAME` the page shows.
 4. **Create the database (and the bucket).**
    ```bash
    npx wrangler d1 create <d1Name>            # prints a database_id: put it in board.d1Id
-   npx wrangler r2 bucket create <r2Bucket>   # only if you want file storage (Cloudflare asks for a payment card for R2)
+   npx wrangler r2 bucket create <r2Bucket>   # only with fileStorage r2 (Cloudflare asks for a payment card for R2)
    ```
    Put the Cloudflare account id (shown by `npx wrangler whoami` or in the dashboard URL) in `board.cloudflareAccountId` if the config
    does not have it, then render the Worker configuration from the repository root: `node tools/setup/apply.mjs --board-only`. It writes
    `board/wrangler.jsonc` from `board/wrangler.jsonc.tmpl`; run it again whenever you change the config.
-5. **Optional: the feedback form's anti-spam (Cloudflare Turnstile).** In the dashboard create a Turnstile widget whose hostname is the
-   board's host; put its *site key* in `board.turnstileSiteKey` and keep its *secret key* for step 6. Without it the public form stays off
-   (the rest of the board works).
-6. **Secrets and keys.** Re-run `node tools/setup/apply.mjs --board-only` after steps 4 and 5, then from `board/`:
+5. **Secrets and keys.** Re-run `node tools/setup/apply.mjs --board-only` after step 4, then from `board/`:
    ```bash
    npm run check && npm test       # the code and the migrations are sound
-   npm run setup:secrets           # makes SESSION_SECRET, the owner key and one key per agent, stores the keys on this machine, sets the
-                                   # Worker secrets, and asks for the Turnstile secret key (hidden; Enter to skip)
+   npm run setup:secrets           # asks for the Owner's password (hidden, typed twice, 12 characters at least), makes SESSION_SECRET and
+                                   # one key per agent, stores the agent keys on this machine, sets the Worker secrets
    ```
-   The keys go into the macOS Keychain (service `board.keychainService`; the owner key under the account `owner.boardName`) or, without
-   `security`, into key files under `~/.boardkit/<project slug>/keys/`. Re-running the script rotates every key and signs every browser out.
-   A cloud session gets its key as an API credential on its environment (or `BOARD_KEY`).
-7. **Create the schema and deploy.**
+   The password is not stored anywhere on this machine: the Owner keeps it. The agent keys go into the macOS Keychain (service
+   `board.keychainService`) or, without `security`, into key files under `~/.boardkit/<project slug>/keys/`. Re-running the script renews
+   everything and signs every browser out; `-- --password-only` and `-- --keys-only` renew one half. A cloud session gets its key as an
+   API credential on its environment (or `BOARD_KEY`).
+6. **Create the schema and deploy.**
    ```bash
    npm run db:remote               # wrangler d1 migrations apply DB --remote
    npm run deploy                  # wrangler deploy
    ```
-   Add the final address's host to the Turnstile widget (step 5) if you use one.
-8. **Name the default project, sign in and check.**
+7. **Name the default project, sign in and check.**
    ```bash
    BOARD_AS=<an agent name> node cli/board.mjs projects rename main "<Project Name>"
    BOARD_AS=<an agent name> node cli/board.mjs whoami
-   node cli/board.mjs owner-key --copy      # the Owner only, in their own terminal; then paste the key into the page
    ```
-   Open `/board/` and paste the owner key at the sign-in (the Owner reads it with `owner-key`, see "Signing in"), then open `/feedback/`
-   and submit a test report: it lands in the Feedback column.
+   Open `/board/` and sign in with the password chosen in step 5.
 
-Local development: `npm run db:local`, a `.dev.vars` file with test values (`SESSION_SECRET`, `OWNER_KEY` of at least 32 characters, and
+Local development: `npm run db:local`, a `.dev.vars` file with test values (`SESSION_SECRET`, `OWNER_PASSWORD` of at least 12 characters, and
 `AGENT_KEYS` as a JSON object of name to key, each key at least 32 characters; never commit it), then `npm run dev`. On localhost the page
-offers a development sign-in as well, and the feedback form skips Turnstile. With the `r2_buckets` line in `wrangler.jsonc` Wrangler
-simulates the bucket locally; without it the board runs in its "no file storage" mode.
+offers a development sign-in as well. With `FILE_STORAGE` set to `d1` the files live in the local D1; with `r2` and the `r2_buckets` line
+in `wrangler.jsonc` Wrangler simulates the bucket locally; with `none` the board runs without file storage.
 
 ## Adding a developer
 

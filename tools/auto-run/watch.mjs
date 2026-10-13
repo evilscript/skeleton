@@ -10,7 +10,7 @@
 // --as      the agent's board identity (default: BOARD_AS); the board CLI needs its key
 // --role    developer (default): comments addressed to you, plus the Owner's comments on your cards;
 //           cards assigned to you or moved by somebody else.
-//           lead: every comment by anybody else, cards entering todo (or feedback), pull requests, our `assign`
+//           lead: every comment by anybody else, cards entering todo, pull requests, our `assign`
 //           comments with no reply, cards stuck in progress, the batch slot, the status audit.
 //           qa: every `review` comment by a Developer (not the Lead's own reviews) on any card, which is a
 //           Developer saying its pull request is submitted, as a [review] line that names the pull requests it

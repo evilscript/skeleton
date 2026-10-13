@@ -2,20 +2,32 @@
 
 ## Credentials
 
-`npm run setup:secrets` (run by the Owner, in their own terminal) makes four kinds of secret and never prints them:
+`npm run setup:secrets` (run by the Owner, in their own terminal) sets three secrets and never prints them:
 
-| Secret | What it is for | Where a copy is kept on the Owner's machine |
+| Secret | What it is for | Where a copy is kept |
 |---|---|---|
-| `OWNER_KEY` | the Owner's sign-in on the board page (at least 32 characters; compared in constant time, both sides hashed first) | Keychain or key file, account = `owner.boardName` (default `owner`); read with `node cli/board.mjs owner-key [--copy]` |
-| `SESSION_SECRET` | signs the session cookie the page gets after a right key (30 days) | none (not needed again) |
+| `OWNER_PASSWORD` | the Owner's sign-in on the board page: the password the Owner chose, at least 12 characters, compared exactly and in constant time (both sides hashed first) | nowhere: the Owner knows it. It is asked at a hidden prompt, typed twice, and goes to Wrangler on its standard input only |
+| `SESSION_SECRET` | signs the session cookie the page gets after a right password (30 days) and hashes the sign-in throttle's source | none (not needed again) |
 | `AGENT_KEYS` | one key per agent in `src/agents.ts` | Keychain or key file, account = the agent's board name |
-| `TURNSTILE_SECRET` | the public feedback form's anti-spam check | none |
 
-Rotating: run the script again. It replaces every key at once and also replaces `SESSION_SECRET`, so every signed-in browser has to sign
-in again and every agent's key has to be placed again (a cloud session's credential too). A lost owner key is handled the same way: a
-Worker secret cannot be read back from Cloudflare. `scripts/add-agent.sh <name>` adds one agent without touching the others and without
-touching the owner key. An agent never reads, prints or copies `OWNER_KEY`; `owner-key` refuses to run in an agent session (`BOARD_AS` set)
-or into a pipe.
+A missing `OWNER_PASSWORD`, or one shorter than 12 characters, locks the sign-in out (`503 sign_in_locked`): fix the secret, do not
+lower the rule.
+
+**A lost password is replaced, not recovered** (a Worker secret cannot be read back from Cloudflare, and nothing here stores it):
+`npm run setup:secrets -- --password-only` asks for a new one and makes a new `SESSION_SECRET`, so every signed-in browser has to sign in
+again; the agent keys are not touched. `-- --keys-only` renews the agent keys and nothing else (every agent's key has to be placed again,
+a cloud session's credential too). With no option the script does both. `scripts/add-agent.sh <name>` adds one agent without touching the
+others. An agent never reads, prints or copies the password and never runs the script.
+
+## Sign-in throttle
+
+A person's password can be guessed, so the Worker allows **5 failed sign-ins per source in 15 minutes**, then answers `429 too_many_attempts`
+with `Retry-After` until the window (counted from the first failure) is over. The source is the client address hashed with `SESSION_SECRET`;
+the table `sign_in_attempts` (migration `0015`) holds that hash, a count and the end of the window, never the address. A right password
+deletes the row, and expired rows are deleted by the next attempt. A failed attempt also waits 600 ms before it is answered (the optional
+Worker variable `SIGN_IN_DELAY_MS` changes that; the tests set it to 0). Someone locked
+out by mistake waits for the window to end, or the Owner clears it: `npx wrangler d1 execute DB --remote --command "DELETE FROM sign_in_attempts"`.
+The development sign-in on `localhost` is not counted.
 
 ## Comment quota
 
@@ -84,8 +96,11 @@ directory is private (0700); SQL files and verification manifests are 0600. Ever
 
 One copy is kept per UTC date; reruns verify the existing copy. A directory lock prevents overlapping jobs; after a crashed process, inspect
 the lock before removing it. Private transient Wrangler logs and local restore files are removed. A D1 export can temporarily pause queries.
-The SQL contains private card, contact and comment data, so keep it private. R2 attachment bytes (when the board has a bucket at all, see
-the README) are **not** in a D1 export; the backup includes their database metadata only.
+The SQL contains private card and comment data, so keep it private. **Where the file bytes are decides what the backup holds**
+(`FILE_STORAGE`, see the README): with `d1` the screenshots and attachments are rows of `file_blobs`, so they are **inside the export**, which
+gets bigger by their size (BLOBs are written as hex, about twice their size) and takes longer to export and restore, and the files count
+against the database's size limit (500 MB on the free plan); with `r2` the bytes are in the bucket, **not** in the export (the backup
+includes their database metadata only), and the bucket needs its own copy; with `none` there are no files.
 
 There is no scheduled backup: run it by hand, or schedule it yourself on a machine that has a signed-in Wrangler. A successful run
 verifies only the resulting SQL copy, not a backup schedule.

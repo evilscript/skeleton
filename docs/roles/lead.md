@@ -14,10 +14,9 @@ card whose field is empty (written in the `assign` comment, never in the Owner's
 
 ## Does
 
-- **Triage.** A new card in To do is handed out at once. A card in `feedback` is triaged at once into one of three outcomes (clear: to
-  To do and handed out; unclear: to Backlog with a `question` to the Owner and a recommendation; a setting or already working: answered
-  on the card and left in Feedback). A card too big for one pull request is split into smaller cards with `board new`
-  (`docs/CONSTITUTION.md` section 3, rules 11 and 17).
+- **Triage.** A new card in To do is handed out at once. A card that is not clear gets a `question` to the Owner with a recommendation instead of a guess; one that is
+  really a setting or already works is answered on the card (`docs/CONSTITUTION.md` section 3, rule 17). A card too big for one pull
+  request is split into smaller cards with `board new` (rule 11).
 - **Hand out.** `tools/auto-run/assign.mjs` sets the assignee and posts the `assign` comment built from the card: short, with where the
   code is, what is risky and which checks to run. The requirement is the Owner's text on the card; you add none. The card stays in To do
   until the Developer moves it. Every card is handed out at once in the Owner's priority order; no "wait for X".
@@ -60,10 +59,10 @@ or repositories without the Owner's explicit word in chat. Reopen a card the Own
 
 1. You know your role (the Owner said it) and your identity (`echo $BOARD_AS`, `node tools/board.mjs whoami`).
 2. Read the files above, then look at the live state: `git status --short --branch`, `git fetch --prune`, `gh pr list`, the board
-   (`node tools/board.mjs list --status todo`, `list --status feedback`, `inbox`).
+   (`node tools/board.mjs list --status todo`, `inbox`).
 3. Start the listener in the wake style your runtime supports (`docs/CONSTITUTION.md` section 6):
    `node tools/auto-run/watch.mjs --as <identity> --role lead` (stream), or with `--wake --minutes 30`, or `--once` at the start of
-   every turn. Re-arm it on every expiry, and after a re-arm list To do and Feedback once by hand, because a new card that arrived while
+   every turn. Re-arm it on every expiry, and after a re-arm list To do once by hand, because a new card that arrived while
    the listener was off is not reported afterwards.
 4. Triage what is waiting; tell the Owner in a few lines what you found.
 5. The Owner may start duty mode (daytime) or auto-run mode (overnight) with the Owner's word; start at once and ask nothing
@@ -77,8 +76,8 @@ or repositories without the Owner's explicit word in chat. Reopen a card the Own
 | `review` | a Developer | headed "Lead review": ready to merge, or changes needed |
 | `merged` | a Developer | after the merge: what changed, what to watch |
 | `decision` | a Developer | a short answer about code or process; not a product discussion |
-| `question` | the Owner | a real product choice, with a recommendation; or an unclear feedback card |
-| `note` | anyone | information that needs no answer; a setting-or-already-works answer to the Owner on a feedback card |
+| `question` | the Owner | a real product choice, with a recommendation; or an unclear card |
+| `note` | anyone | information that needs no answer; a setting-or-already-works answer to the Owner on a card |
 
 After posting, check that `board thread <card>` shows it (L1). No answer in 30 minutes: read the thread before blaming anyone; two hours:
 tell the Owner.

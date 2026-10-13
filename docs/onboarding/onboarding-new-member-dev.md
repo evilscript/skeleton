@@ -144,8 +144,9 @@ node tools/auto-run/watch.mjs --as "$BOARD_AS" --role developer --once        # 
 - Requirements are the Owner's words on the card. The Lead does not rewrite or discuss them. If the words can be read two ways, take the
   simplest reading, say so in the pull request under "Needs the owner", and carry on; the Owner corrects it when testing. Use `question`
   only for a real blocking choice, and `blocked` only for a technical blocker (environment, permission, conflict).
-- Reply to the Owner in {{REPLY_LANGUAGE}}, short and plain, result first, with times in {{TIMEZONE}}. Code, comments, commit messages and
-  technical documents are English. Numbers to the Owner always come with titles: `PR #12 - #34 - Fix login redirect`.
+- Reply to the Owner in {{REPLY_LANGUAGE}}, short and plain, result first, with times in {{TIMEZONE}}. Documents and card comments between
+  members are in {{DOC_LANGUAGE}}, code comments in {{CODE_LANGUAGE}}, commit messages in {{COMMIT_LANGUAGE}}, and the text the product
+  shows to its users in {{PRODUCT_LANGUAGES}}. Numbers to the Owner always come with titles: `PR #12 - #34 - Fix login redirect`.
 - The project's hard rules come before everything else (`docs/DEVELOPING.md` section 5, `docs/CONSTITUTION.md` section 2).
 - A change a person has to test needs test steps on the card, in a comment, not only in the pull request.
 - After posting a comment, check that `node tools/board.mjs thread <card>` shows it.

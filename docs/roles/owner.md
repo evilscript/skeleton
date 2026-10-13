@@ -43,8 +43,7 @@ card you closed stays closed: nobody asks about it again, and you reopen it your
 - Expect few questions. Agents decide small things and report them; they ask only about irreversible choices or when your words give
   opposite results. If they ask too much, say "decide yourself and tell me".
 - To start a batch of work and leave, say "auto-run mode". You get a report when it ends. To stop a mode, say stop.
-- Feedback from users arrives in the Feedback column; the Lead reads each one at once. Clear ones go straight to To do, unclear ones go
-  to Backlog with a question for you.
+- A card that is not clear is not guessed at: the Lead asks you a question on the card, with a recommendation.
 
 ## What you can ask for at any time
 

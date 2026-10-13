@@ -191,17 +191,12 @@ test("a card moved to another layer of its column goes to the top of the column;
   } finally { sqlite.close(); }
 });
 
-test("the card shows its column's first status when a stored status doesn't belong to the stored column; feedback cards are feedback", async () => {
-  const { sqlite, request, env } = database();
+test("the card shows its column's first status when a stored status doesn't belong to the stored column", async () => {
+  const { sqlite, request } = database();
   try {
     sqlite.exec("UPDATE cards SET col='done' WHERE no=1"); // a hand edit or an old restore: col moved, status stayed backlog
     const card = (await (await request("/api/cards/1")).json() as { card: { status: string; col: string } }).card;
     assert.deepEqual([card.col, card.status], ["done", "done"]);
-    const form = new FormData();
-    form.set("requestId", crypto.randomUUID());
-    form.set("description", "A visitor's report");
-    assert.equal((await worker.fetch(new Request("http://localhost/api/feedback", { method: "POST", headers: { origin: "http://localhost" }, body: form }), env)).status, 201);
-    assert.deepEqual({ ...sqlite.prepare("SELECT col,status FROM cards WHERE source='feedback'").get() as object }, { col: "feedback", status: "feedback" });
   } finally { sqlite.close(); }
 });
 
@@ -256,8 +251,8 @@ test("project chip APIs, comment feeds and quota remain isolated after main reco
   } finally { sqlite.close(); }
 });
 
-test("column counts preserve main's create, move, remove, restore and feedback behavior", async () => {
-  const { sqlite, request, env, queries } = database();
+test("column counts follow create, move, remove and restore", async () => {
+  const { sqlite, request, queries } = database();
   const consistent = () => {
     for (const row of sqlite.prepare("SELECT project_id,col,n,(SELECT COUNT(*) FROM cards c WHERE c.project_id=column_counts.project_id AND c.col=column_counts.col AND c.removed_at IS NULL) AS expected FROM column_counts").all())
       assert.equal(row.n, row.expected, `${row.project_id}/${row.col}`);
@@ -275,12 +270,6 @@ test("column counts preserve main's create, move, remove, restore and feedback b
       [`/api/cards/${no}/restore`, "POST", undefined],
       [`/api/cards/${no}/restore`, "POST", undefined],
     ] as const) { assert.equal((await request(path, method, body)).status, 200); consistent(); }
-    const form = new FormData();
-    form.set("requestId", crypto.randomUUID());
-    form.set("description", "Feedback count regression");
-    const feedback = () => worker.fetch(new Request("http://localhost/api/feedback", { method: "POST", headers: { origin: "http://localhost" }, body: form }), env);
-    assert.equal((await feedback()).status, 201); consistent();
-    assert.equal((await feedback()).status, 200); consistent(); // Idempotent feedback must not bump twice.
     queries.length = 0;
     const list = await (await request("/api/cards?hide=done&version=1&chips=1")).json() as { cards: { no: number }[]; hidden: { count: number }; version: unknown; chips: unknown[] };
     assert.equal(list.hidden.count, 1);
@@ -335,14 +324,18 @@ test("the QA agent (a limited key) reads everything, adds notes to cards and can
   } finally { sqlite.close(); }
 });
 
-test("GET /api/info is public and gives the project name; without one it says Board", async () => {
+test("GET /api/info is public and gives the project name, the file storage and the language; without a name it says Board", async () => {
   const { sqlite, env } = database();
   try {
     const ask = (e: typeof env) => worker.fetch(new Request("http://localhost/api/info"), e);
     const plain = await ask(env);
     assert.equal(plain.status, 200);
-    assert.deepEqual(await plain.json(), { projectName: "Board", files: true });
-    const named = await ask({ ...env, PROJECT_NAME: "Example Project" });
-    assert.deepEqual(await named.json(), { projectName: "Example Project", files: true });
+    assert.deepEqual(await plain.json(), { projectName: "Board", files: true, fileStorage: "r2", maxFileBytes: 25 * 1024 * 1024, language: "en" });
+    const named = await ask({ ...env, PROJECT_NAME: "Example Project", BOARD_LANGUAGE: "zh-CN" });
+    assert.deepEqual(await named.json(), { projectName: "Example Project", files: true, fileStorage: "r2", maxFileBytes: 25 * 1024 * 1024, language: "zh-CN" });
+    // A language that is not a code (a path, a script) is English.
+    for (const bad of ["", "../x", "en/../../x", "<b>", "english language", "e"]) {
+      assert.equal(((await (await ask({ ...env, BOARD_LANGUAGE: bad })).json()) as { language: string }).language, "en", bad);
+    }
   } finally { sqlite.close(); }
 });

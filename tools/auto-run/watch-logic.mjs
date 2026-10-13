@@ -34,9 +34,9 @@ export function cardEvents(ctx, c, prev) {
 		// Work starts from todo (the Owner's go); backlog is where new cards land and stays quiet.
 		const st = statusOf(c);
 		const active = WORKING.has(st);
-		if (!prev) return st === 'todo' || st === 'feedback' ? [`new ${cardLine(c)}`] : [];
+		if (!prev) return st === 'todo' ? [`new ${cardLine(c)}`] : [];
 		const was = statusOf(prev);
-		if (was !== st && (st === 'todo' || st === 'feedback')) notes.push(`moved ${was} -> ${st}`);
+		if (was !== st && st === 'todo') notes.push(`moved ${was} -> ${st}`);
 		if (active && (prev.assignee || null) !== (c.assignee || null)) notes.push(`assignee ${prev.assignee || '-'} -> ${c.assignee || '-'}`);
 		if (active && (prev.priority || null) !== (c.priority || null)) notes.push(`priority ${prev.priority || '-'} -> ${c.priority || '-'}`);
 	} else {

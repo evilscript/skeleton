@@ -25,7 +25,7 @@ a **PM sub-agent** (`pm-agent.md`, a fresh one per pass) hands cards out and wat
 1. **Check.** `git status` clean on `{{DEFAULT_BRANCH}}`, `git fetch`, nothing of yours half-merged. Read the board:
    `node tools/board.mjs list --status todo` (the cards the Owner wants worked on; top to bottom is the Owner's order; **only these
    are handed out**: a new card lands in backlog and nobody starts work from backlog), `list --col progress` (in progress, PR reviewing,
-   On Main), `list --col feedback` (users' reports: triage each at once, `docs/CONSTITUTION.md` section 3 rule 17). Read each candidate card
+   On Main), an unclear card is asked about, not guessed (`docs/CONSTITUTION.md` section 3 rule 17). Read each candidate card
    (`show`, `brief`).
 2. **Build the queue.** The Owner leaves the size to the Lead (more than about fifteen cards a night only if they are small).
    - **In:** To do cards assigned to a Developer, and unassigned code requests (to the Developer with the fewest open cards, unless the
@@ -161,7 +161,7 @@ called only when there is an event. A reviewed pull request is merged at once; t
    `node tools/auto-run/watch.mjs --as <the Lead's board name> --role lead`
    (`docs/CONSTITUTION.md` section 6; state in `~/.boardkit/{{PROJECT_SLUG}}/`). Monitors usually expire after about 30 minutes:
    **re-arm it on every expiry notice**, quietly; its state file remembers what was reported, so a re-arm reports only what is new, but
-   a card that arrived while it was off is not reported afterwards, so list To do and Feedback once by hand after each re-arm. It
+   a card that arrived while it was off is not reported afterwards, so list To do once by hand after each re-arm. It
    polls the board's one-row version every 30 seconds (cards and comments only when it changed) and GitHub's open pull requests every
    60 seconds, and costs no model tokens. The first run prints two `[watch] baseline` lines: check them, that proves it works. If the
    runtime has no background monitor use `--wake` or `--once` (`docs/CONSTITUTION.md` section 6) and tell the Owner. Keep the machine awake.
@@ -181,10 +181,9 @@ nothing or one short line when something was handled.
   moved last (the audit skips those).
 - **`[card] new ...`, `moved ... -> todo`, `assignee ...`, `priority ...`** (a card in To do or In progress; a new card in backlog is
   silent: nobody starts it until the Owner moves it to To do): **triage at once.**
-  - A **feedback** card (a user's report): read it and its screenshots now. Clear and workable: `move <card> todo` and hand it out, in the
-    same minute. Not clear (two readings with different results, no way to reproduce, a product choice): `move <card> backlog`, a
-    `question` to the Owner on the card with your recommendation, and tell the Owner in chat at once. A setting or something that already
-    works: answer on the card (`--to {{OWNER_BOARD_NAME}} --type note`, where to change it) and leave it in Feedback.
+  - A card that is **not clear** (two readings with different results, no way to reproduce, a product choice): a `question` to the Owner
+    on the card with your recommendation, tell the Owner in chat at once, and hand nothing out until he answers. A request that is
+    really a setting or already works: answer on the card (`--to {{OWNER_BOARD_NAME}} --type note`, where to change it).
   - The Owner's own cards: ignore; never move them or comment-assign them. An unassigned card: code to a Developer by load, unless the
     Owner dedicated one; research, release and data to the Lead; what needs the Owner's data or decision stays with the Owner, with a
     `question`. A card the Owner assigned to a Developer himself: just start it by handing it out.

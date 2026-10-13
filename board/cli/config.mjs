@@ -49,8 +49,6 @@ export function boardSettings(env = process.env, found = findConfig()) {
     // The key-store service name: board.keychainService, else <slug>-board, else "board".
     keychainService: String(config.board?.keychainService || (config.project?.slug ? `${config.project.slug}-board` : "board")),
     defaultProject: config.board?.defaultProject || "",
-    // The Owner's name on the board (owner.boardName): the account their key is stored under.
-    ownerBoardName: String(config.owner?.boardName || "owner"),
     timezone: config.owner?.timezone || undefined,
     stateDir,
     keyDir: join(stateDir, "keys"),

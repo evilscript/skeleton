@@ -11,8 +11,8 @@
   --owner: #9a1aa8; --owner-bg: #f8e6fc;
   --x0: #0f766e; --x0-bg: #d8f3ef; --x1: #b45309; --x1-bg: #fdecc8; --x2: #be185d; --x2-bg: #fde4ee; --x3: #4d7c0f; --x3-bg: #e5f3cf;
   --p-minor: #5b6678; --p-major: #a65308; --p-critical: #b23a0b; --p-blocker: #dc2626; --p-blocker-bg: #dc2626; --p-blocker-ink: #ffffff;
-  --c-feedback: #7c3aed; --c-backlog: #6b7384; --c-todo: #2f6fdb; --c-progress: #c58a12; --c-pr: #c4531f; --c-testing: #1f7a9a; --c-later: #5a45b8; --c-done: #1f8a50;
-  --s-feedback: var(--c-feedback); --s-backlog: var(--c-backlog); --s-todo: var(--c-todo); --s-progress: var(--c-progress); --s-pr_review: #c4531f; --s-on_main: #5b8a1e; --s-probe_needed: #c0267a; --s-spike_ready: #6b3fc4; --s-on_prod_qa: var(--c-testing); --s-qa_later: var(--c-later); --s-done: var(--c-done);
+  --c-backlog: #6b7384; --c-todo: #2f6fdb; --c-progress: #c58a12; --c-pr: #c4531f; --c-testing: #1f7a9a; --c-later: #5a45b8; --c-done: #1f8a50;
+  --s-backlog: var(--c-backlog); --s-todo: var(--c-todo); --s-progress: var(--c-progress); --s-pr_review: #c4531f; --s-on_main: #5b8a1e; --s-probe_needed: #c0267a; --s-spike_ready: #6b3fc4; --s-on_prod_qa: var(--c-testing); --s-qa_later: var(--c-later); --s-done: var(--c-done);
   --chip-lift: 0%;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -27,7 +27,7 @@
     --owner: #e9aaf6; --owner-bg: #3a1d43;
     --x0: #5eead4; --x0-bg: #12302d; --x1: #fbbf5a; --x1-bg: #3a2a0f; --x2: #f9a8d4; --x2-bg: #3d1627; --x3: #bef264; --x3-bg: #26330f;
     --p-minor: #a3aec0; --p-major: #f6b858; --p-critical: #fb9254; --p-blocker: #f87171; --p-blocker-bg: #dc2626; --p-blocker-ink: #ffffff;
-    --c-feedback: #b9a2f8; --c-backlog: #a8b0bf; --c-todo: #7fa8f2; --c-progress: #ecbb52; --c-pr: #f0956a; --c-testing: #80c8e0; --c-later: #bbabf6; --c-done: #5cc98b; --chip-lift: 45%;
+    --c-backlog: #a8b0bf; --c-todo: #7fa8f2; --c-progress: #ecbb52; --c-pr: #f0956a; --c-testing: #80c8e0; --c-later: #bbabf6; --c-done: #5cc98b; --chip-lift: 45%;
     --s-pr_review: #f0956a; --s-on_main: #a6d36a; --s-probe_needed: #f58ac4; --s-spike_ready: #b99cff;
   }
 }
@@ -40,7 +40,7 @@
   --owner: #e9aaf6; --owner-bg: #3a1d43;
     --x0: #5eead4; --x0-bg: #12302d; --x1: #fbbf5a; --x1-bg: #3a2a0f; --x2: #f9a8d4; --x2-bg: #3d1627; --x3: #bef264; --x3-bg: #26330f;
   --p-minor: #a3aec0; --p-major: #f6b858; --p-critical: #fb9254; --p-blocker: #f87171; --p-blocker-bg: #dc2626; --p-blocker-ink: #ffffff;
-  --c-feedback: #b9a2f8; --c-backlog: #a8b0bf; --c-todo: #7fa8f2; --c-progress: #ecbb52; --c-pr: #f0956a; --c-testing: #80c8e0; --c-later: #bbabf6; --c-done: #5cc98b; --chip-lift: 45%;
+  --c-backlog: #a8b0bf; --c-todo: #7fa8f2; --c-progress: #ecbb52; --c-pr: #f0956a; --c-testing: #80c8e0; --c-later: #bbabf6; --c-done: #5cc98b; --chip-lift: 45%;
   --s-pr_review: #f0956a; --s-on_main: #a6d36a; --s-probe_needed: #f58ac4; --s-spike_ready: #b99cff;
 }
 :root[data-theme="light"] { color-scheme: light; }
@@ -51,6 +51,9 @@ body { margin: 0; background: var(--ground); color: var(--ink); font: 14px/1.5 v
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 [hidden] { display: none !important; }
+/* The page waits for its language pack (shared/i18n.js removes the class); it shows after 2.5 s whatever happens. */
+html.i18n-loading body { visibility: hidden; animation: i18n-show 0s 2.5s forwards; }
+@keyframes i18n-show { to { visibility: visible; } }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 
 /* Top bar */
@@ -91,11 +94,6 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: .85; }
 .col { display: flex; flex-direction: column; gap: 8px; min-height: 120px; max-height: 100%; background: var(--col-bg);
   border: 1px solid var(--line); border-top: 3px solid var(--dot); border-radius: 12px; padding: 8px 8px 10px; }
 .col.over { background: var(--drop); }
-/* Feedback above Backlog in one grid column. The page scrolls as a whole, so
-   Feedback stops at about half a screen and scrolls inside, leaving Backlog
-   in view. */
-.stack { display: flex; flex-direction: column; gap: 14px; }
-.stack > .col[data-col="feedback"] { max-height: 45vh; }
 .col h2, .float h2 { display: flex; align-items: center; gap: 8px; margin: 4px 4px 2px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
 .col h2::before, .float h2::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); }
 .col h2 .count, .float h2 .count { margin-left: auto; font-family: var(--mono); font-weight: 500; letter-spacing: 0; font-variant-numeric: tabular-nums;
@@ -226,7 +224,6 @@ textarea.field { width: 100%; min-height: 180px; resize: vertical; line-height: 
 .drop { border: 1px dashed var(--line-strong); border-radius: 8px; padding: 10px; color: var(--muted); font-size: 12px; text-align: center; background: var(--raised); }
 .drop:hover { border-color: var(--muted); }
 .drop.over { background: var(--drop); }
-details.report pre { white-space: pre-wrap; font: 12px/1.5 var(--mono); background: var(--raised); border: 1px solid var(--line); border-radius: 8px; padding: 8px; max-height: 300px; overflow: auto; }
 .activity { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 2px; max-height: 160px; overflow-y: auto; }
 .actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .zoom img { max-width: 100%; max-height: calc(100vh - 80px); display: block; margin: auto; }

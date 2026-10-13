@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="i18n-loading">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -16,10 +16,10 @@
     <div class="gate" id="gate" hidden>
       <form class="box" id="gate-form">
         <h1 id="gate-title">Board</h1>
-        <p id="gate-text">Enter the owner key to open the board.</p>
-        <input class="field" type="password" id="gate-key" name="key" placeholder="Owner key" aria-label="Owner key" autocomplete="current-password" required />
-        <button class="btn primary" id="gate-submit" type="submit">Sign in</button>
-        <p class="hint">The Owner reads the key on their own machine with <code>node cli/board.mjs owner-key</code>.</p>
+        <p id="gate-text" data-i18n="board.gate.text">Enter the password to open the board.</p>
+        <input class="field" type="password" id="gate-password" name="password" placeholder="Password" aria-label="Password" data-i18n-attr="placeholder:board.gate.password; aria-label:board.gate.password" autocomplete="current-password" required />
+        <button class="btn primary" id="gate-submit" type="submit" data-i18n="board.gate.submit">Sign in</button>
+        <p class="hint" data-i18n="board.gate.hint">Forgot it? The Owner resets it with <code data-slot="command">npm run setup:secrets -- --password-only</code>.</p>
         <div id="dev-signin"></div>
       </form>
     </div>
@@ -27,39 +27,39 @@
     <div id="app" hidden>
       <div class="top">
         <h1>
-          <select id="project" aria-label="Project"></select>
-          <button class="btn small" id="projects-btn" title="Add a project, or rename one">Projects…</button>
+          <select id="project" aria-label="Project" data-i18n-attr="aria-label:board.top.project"></select>
+          <button class="btn small" id="projects-btn" title="Add a project, or rename one" data-i18n="board.top.projects" data-i18n-attr="title:board.top.projects_title">Projects…</button>
           <small id="total"></small>
         </h1>
         <div class="filters">
-          <input type="search" id="q" placeholder="Search number, title, description" aria-label="Search" />
-          <select id="f-assignee" aria-label="Assignee">
-            <option value="">Anyone</option>
+          <input type="search" id="q" placeholder="Search number, title, description" aria-label="Search" data-i18n-attr="placeholder:board.top.search; aria-label:board.top.search_label" />
+          <select id="f-assignee" aria-label="Assignee" data-i18n-attr="aria-label:board.assignee">
+            <option value="" data-i18n="board.top.anyone">Anyone</option>
             <!-- the agents are filled in from /api/agents when the page starts (board.js) -->
-            <option value="owner">Owner</option>
-            <option value="none">Nobody</option>
+            <option value="owner" data-i18n="board.owner">Owner</option>
+            <option value="none" data-i18n="board.nobody">Nobody</option>
           </select>
-          <select id="f-priority" aria-label="Priority">
-            <option value="">All priorities</option>
-            <option value="blocker">Blocker</option>
-            <option value="critical">Critical</option>
-            <option value="major">Major</option>
-            <option value="minor">Minor</option>
-            <option value="none">None</option>
+          <select id="f-priority" aria-label="Priority" data-i18n-attr="aria-label:board.priority">
+            <option value="" data-i18n="board.top.all_priorities">All priorities</option>
+            <option value="blocker" data-i18n="priority.blocker">Blocker</option>
+            <option value="critical" data-i18n="priority.critical">Critical</option>
+            <option value="major" data-i18n="priority.major">Major</option>
+            <option value="minor" data-i18n="priority.minor">Minor</option>
+            <option value="none" data-i18n="priority.none">None</option>
           </select>
-          <select id="f-chip" aria-label="Chip"><option value="">All chips</option></select>
-          <button class="btn primary" id="new">New card</button>
-          <button class="btn" id="manage-chips">Manage chips</button>
-          <button class="btn" id="done-btn" title="Open the done cards; you can also drag a card here">Done</button>
-          <button class="btn" id="feed-btn" title="The conversation on the cards">Conversation</button>
-          <button class="btn" id="removed">Removed</button>
+          <select id="f-chip" aria-label="Chip" data-i18n-attr="aria-label:board.top.chip"><option value="" data-i18n="board.top.all_chips">All chips</option></select>
+          <button class="btn primary" id="new" data-i18n="board.top.new">New card</button>
+          <button class="btn" id="manage-chips" data-i18n="board.top.manage_chips">Manage chips</button>
+          <button class="btn" id="done-btn" title="Open the done cards; you can also drag a card here" data-i18n="column.done" data-i18n-attr="title:board.top.done_title">Done</button>
+          <button class="btn" id="feed-btn" title="The conversation on the cards" data-i18n="board.feed" data-i18n-attr="title:board.top.feed_title">Conversation</button>
+          <button class="btn" id="removed" data-i18n="board.top.removed">Removed</button>
         </div>
         <span class="who" id="who"></span>
-        <button class="btn small" id="theme-btn" title="System, light or dark: click to switch">Theme</button>
-        <button class="btn small" id="logout">Sign out</button>
+        <button class="btn small" id="theme-btn" title="System, light or dark: click to switch" data-i18n-attr="title:board.top.theme_title">Theme</button>
+        <button class="btn small" id="logout" data-i18n="board.top.logout">Sign out</button>
       </div>
       <main class="board" id="board"></main>
-      <aside class="float" id="done-panel" aria-label="Done" hidden></aside>
+      <aside class="float" id="done-panel" aria-label="Done" data-i18n-attr="aria-label:column.done" hidden></aside>
     </div>
 
     <dialog id="card-dlg"><form method="dialog" class="dlg" id="card-form"></form></dialog>
@@ -67,7 +67,7 @@
     <dialog id="projects-dlg"><form method="dialog" class="dlg" id="projects-form"></form></dialog>
     <dialog id="chips-dlg"><form method="dialog" class="dlg" id="chips-form"></form></dialog>
     <dialog id="feed-dlg"><form method="dialog" class="dlg" id="feed-form"></form></dialog>
-    <dialog id="zoom-dlg" class="zoom"><form method="dialog"><button class="btn small" value="close">Close</button><img id="zoom-img" alt="" /></form></dialog>
+    <dialog id="zoom-dlg" class="zoom"><form method="dialog"><button class="btn small" value="close" data-i18n="common.close">Close</button><img id="zoom-img" alt="" /></form></dialog>
     <div class="toast" id="toast" hidden></div>
   </body>
 </html>

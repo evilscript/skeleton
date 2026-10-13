@@ -64,7 +64,7 @@ function run(args: string[], env: Record<string, string>): Promise<{ code: numbe
 test("the help lists the variables and every status; an unknown command fails", async () => {
   const help = await run([], {});
   assert.equal(help.code, 0);
-  for (const word of ["BOARD_AS", "BOARD_KEY", "BOARD_AUTH=proxy", "BOARD_URL", "BOARD_PROJECT", "owner-key [--copy]", ...STATUS_SLUGS]) assert.ok(help.out.includes(word), word);
+  for (const word of ["BOARD_AS", "BOARD_KEY", "BOARD_AUTH=proxy", "BOARD_URL", "BOARD_PROJECT", ...STATUS_SLUGS]) assert.ok(help.out.includes(word), word);
   // --help prints the same text and succeeds; an unknown command prints it and fails.
   const flag = await run(["--help"], {});
   assert.equal(flag.code, 0);
@@ -72,42 +72,14 @@ test("the help lists the variables and every status; an unknown command fails", 
   assert.equal((await run(["nonsense"], {})).code, 1);
 });
 
-test("the Owner's board name comes from owner.boardName, default owner", () => {
-  assert.equal(boardSettings({}, null).ownerBoardName, "owner");
-  assert.equal(boardSettings({}, { file: "x", config: { owner: { boardName: "boss" } } }).ownerBoardName, "boss");
-  assert.equal(boardSettings({}, { file: "x", config: { owner: {} } }).ownerBoardName, "owner");
+test("the Owner's password has no command: the CLI never knows it", async () => {
+  // The Owner signs in on the page with a password they chose; nothing on a machine stores it, so there is nothing to print.
+  const help = await run([], {});
+  assert.doesNotMatch(help.out, /owner-key/);
+  const r = await run(["owner-key"], {});
+  assert.equal(r.code, 1);
+  assert.ok(!("ownerBoardName" in boardSettings({}, null)));
 });
-
-test("owner-key warns, and refuses to print into a pipe or to run in an agent session", () => tempDir(async (home) => {
-  // A key file is there, so a refusal is not just "no key"; the key must never leave the program.
-  const settings = boardSettings({});
-  const keys = join(home, ".boardkit", settings.slug, "keys");
-  mkdirSync(keys, { recursive: true });
-  const SECRET = "owner-key-that-must-not-leak-" + "0".repeat(34);
-  writeFileSync(join(keys, settings.ownerBoardName), SECRET + "\n");
-  chmodSync(join(keys, settings.ownerBoardName), 0o600);
-  const base = { HOME: home, USERPROFILE: home };
-  const quiet = (r: { out: string; err: string }) => {
-    assert.equal(r.out, "");
-    assert.ok(!r.out.includes(SECRET) && !r.err.includes(SECRET), "the key was printed");
-  };
-  // stdout is a pipe here (as in an agent's shell or a log): no key without --copy.
-  let r = await run(["owner-key"], base);
-  assert.equal(r.code, 1);
-  assert.match(r.err, /WARNING: this is the Owner's credential/);
-  assert.match(r.err, /refusing to print the owner key/);
-  quiet(r);
-  // --copy needs an interactive terminal too (stdin here is a pipe).
-  r = await run(["owner-key", "--copy"], base);
-  assert.equal(r.code, 1);
-  assert.match(r.err, /refusing to copy the owner key/);
-  quiet(r);
-  // A session that has a board identity is an agent's, not the Owner's own terminal.
-  r = await run(["owner-key", "--copy"], { ...base, BOARD_AS: "some-agent" });
-  assert.equal(r.code, 1);
-  assert.match(r.err, /BOARD_AS is set/);
-  quiet(r);
-}));
 
 // A local server stands in for the Worker: it records who asked.
 async function withServer(fn: (url: string, seen: (string | undefined)[]) => Promise<void>) {
@@ -155,4 +127,62 @@ test("the key is read from BOARD_KEY_<NAME>, then BOARD_KEY, then the key file; 
     assert.equal(r.code, 1);
     assert.match(r.err, /no key for stranger/);
   }));
+});
+
+// A stand-in Worker for `attach`: it answers /api/info and records the uploads.
+async function withBoard(info: Record<string, unknown> | null, fn: (url: string, uploads: string[]) => Promise<void>) {
+  const uploads: string[] = [];
+  const server = createServer((req, res) => {
+    res.setHeader("content-type", "application/json");
+    if (req.url === "/api/info") { res.statusCode = info ? 200 : 404; res.end(JSON.stringify(info ?? {})); }
+    else if (req.method === "POST" && req.url === "/api/cards/5/files") {
+      uploads.push("upload");
+      req.resume();
+      req.on("end", () => { res.statusCode = 201; res.end(JSON.stringify({ files: [{ id: "x", name: "shot.png" }] })); });
+    } else res.end("{}");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try { await fn(`http://127.0.0.1:${(server.address() as AddressInfo).port}`, uploads); }
+  finally { await new Promise((resolve) => server.close(resolve)); }
+}
+
+test("attach asks the board for its limit first: no storage, a file over the limit, a file within it, and an older Worker", async () => {
+  await tempDir(async (home) => {
+    const small = join(home, "small.png"), big = join(home, "big.png");
+    writeFileSync(small, Buffer.alloc(1000));
+    writeFileSync(big, Buffer.alloc(2 * 1048576));
+    const env = (url: string) => ({ HOME: home, USERPROFILE: home, BOARD_URL: url, BOARD_AS: "tester", BOARD_KEY: "a-key-that-is-not-a-secret" });
+
+    // No file storage: a clear message, nothing is sent.
+    await withBoard({ projectName: "Board", files: false, fileStorage: "none", maxFileBytes: 0, language: "en" }, async (url, uploads) => {
+      const r = await run(["attach", "5", small], env(url));
+      assert.equal(r.code, 1);
+      assert.match(r.err, /no file storage/);
+      assert.deepEqual(uploads, []);
+    });
+    // A board that keeps its files in its database: 1.5 MB, and the message says what to do.
+    await withBoard({ projectName: "Board", files: true, fileStorage: "d1", maxFileBytes: 1572864, language: "en" }, async (url, uploads) => {
+      const r = await run(["attach", "5", big], env(url));
+      assert.equal(r.code, 1);
+      assert.match(r.err, /big\.png is 2\.0 MB; this board takes 1\.5 MB at most for one file/);
+      assert.match(r.err, /Shrink it first/);
+      assert.deepEqual(uploads, []);
+      const ok = await run(["attach", "5", small, "--screenshot"], env(url));
+      assert.equal(ok.code, 0, ok.err);
+      assert.match(ok.out, /#5 \+ shot\.png/);
+      assert.deepEqual(uploads, ["upload"]);
+    });
+    // R2: 25 MB, so the same file goes through.
+    await withBoard({ projectName: "Board", files: true, fileStorage: "r2", maxFileBytes: 25 * 1048576, language: "en" }, async (url, uploads) => {
+      const r = await run(["attach", "5", big], env(url));
+      assert.equal(r.code, 0, r.err);
+      assert.deepEqual(uploads, ["upload"]);
+    });
+    // An older Worker has no limit in /api/info: the 25 MB rule it always had.
+    await withBoard({ projectName: "Board", files: true }, async (url, uploads) => {
+      const r = await run(["attach", "5", small], env(url));
+      assert.equal(r.code, 0, r.err);
+      assert.deepEqual(uploads, ["upload"]);
+    });
+  });
 });
