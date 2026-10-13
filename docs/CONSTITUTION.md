@@ -252,7 +252,7 @@ node tools/auto-run/watch.mjs --as <identity> --role developer|lead|qa [--once |
   re-prioritized by somebody else. It reads the Owner's own words with `board brief <card>`, not a summary of them.
 - **QA role** hears: `review` comments (a Developer saying its pull request is submitted, with the pull request links in it) and
   comments addressed to it.
-- **Lead role** hears everything: every comment by anybody else, new cards, pull requests opened or pushed to, an `assign` comment that
+- **Lead role** hears everything: every comment by anybody else, cards entering To do (the Owner's go; a new card in Backlog is silent), pull requests opened or pushed to, an `assign` comment that
   got no reply, a card stuck in progress, the `[status]` audit lines, and the merge slot when pull requests are open.
 - **Wake styles**, because runtimes differ; the agent uses the first its runtime supports and tells the Owner at session start if it
   supports none:

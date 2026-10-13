@@ -71,6 +71,10 @@ ask. The full role definitions are `docs/CONSTITUTION.md` section 1 and `docs/ro
   cards regularly: run the shared listener (`tools/auto-run/watch.mjs --as <identity> --role developer|lead|qa`, in the wake style your
   runtime supports; `docs/CONSTITUTION.md` section 6). CLI: `node tools/board.mjs comment <card> "..." --to <identity> --type review`,
   `thread <card>`, `inbox`.
+- **Start of every session: turn the listener on first**, and say so to the Owner (`node tools/auto-run/watch.mjs --as <identity> --role <your role>`,
+  `docs/CONSTITUTION.md` section 6). The Lead's trigger is a card entering **To do**, the Owner's go: the listener prints `[card] new ...` or
+  `[card] moved ... -> todo`, and the Lead reads the card, asks the Owner if it is not clear, or hands it out. A card in Backlog is silent: nothing starts
+  from there. The listener lives only as long as the session; re-arm it on every expiry and list To do by hand once after a re-arm.
 - A card has one of ten statuses (`backlog todo progress pr_review on_main spike_ready probe_needed on_prod_qa qa_later
   done`; `docs/CONSTITUTION.md` section 4, `board/docs/STATUSES.md`). The Owner puts a card in To do when work should start; the Lead
   hands it out and the card stays in To do; the Developer moves it
