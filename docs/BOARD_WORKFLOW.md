@@ -23,8 +23,8 @@ document and the Owner's words disagree, the Owner's words win and the Lead corr
 |---|---|---|---|---|---|
 | 1 | (new) | `backlog` | anyone | a request exists | the card is made first (`board new`); the Owner's words are its description |
 | 2 | `backlog` | `todo` | the Owner | the Owner wants work to start | the Owner sets the priority; the Lead's listener hears it (the trigger) |
-| 3 | `todo` | `todo` (handed out) | the Lead | the card is clear | not a move: `board set <card> --assignee <identity>` and an `assign` comment; one type chip and one area chip are added |
-| 4 | `todo` | `progress` | the assigned Developer | it starts the work | its `started` comment first. The Lead never sets `progress` |
+| 3 | `todo` | `todo` (handed out) | the Lead | the card is clear and the team has a Developer | not a move: `board set <card> --assignee <identity>` and an `assign` comment (`tools/auto-run/assign.mjs`); one type chip and one area chip are added. Which Developer: the one the Owner dedicated, else the one with the fewest open cards |
+| 4 | `todo` | `progress` | the assigned Developer; **the Lead** on a card it does itself | the work starts. The Lead does the card itself when `docs/TEAM.md` lists no Developer, or when the card is research, a release or data work | the Developer's `started` comment first. When the Lead does it: it sets itself as the assignee, posts a `started` comment `--to {{OWNER_BOARD_NAME}}` with the 3 to 5 things it will change, and then works like a Developer (own branch, one pull request, the checks; QA tests it if the team has QA). The Lead never sets `progress` on a card that has a Developer |
 | 5 | `progress` | `pr_review` | the Lead | a `review` comment with a pull request link arrived and the pull request is open | the Lead reviews now and answers with a "Lead review" comment and a label on the pull request |
 | 6 | `pr_review` | `progress` | the Developer | it takes the card up again after "Lead review: changes needed" or `QA: fail` | a short `note` on what it changes; the `Sent back` chip is removed (section 4) |
 | 7 | `pr_review` | `on_main` | the Lead | the pull request is merged into `{{DEFAULT_BRANCH}}` | a `merged` comment; the label `Lead: merged` |
@@ -39,7 +39,7 @@ document and the Owner's words disagree, the Owner's words win and the Lead corr
 
 ## 3. Moves nobody makes
 
-- The Lead never sets `progress`, `done` or `qa_later`, never moves the Owner's own cards, and never starts work from `backlog`.
+- The Lead never sets `progress` on a card that has a Developer, never sets `done` or `qa_later`, never moves the Owner's own cards, and never starts work from `backlog`.
 - A Developer never sets `pr_review`, `on_main`, `on_prod_qa`, `probe_needed`, `spike_ready` or `done`.
 - QA moves no card at all (its key is limited); its result is a `note` on the card and a label on the pull request.
 - No card goes to `on_main` without a merged pull request, and none to `on_prod_qa` that is not in a release or deploy.
@@ -81,7 +81,30 @@ Rules for conditions:
    Owner` (`board list --chip Blocked`) and handles every one that has no action waiting on it.
 4. Nothing here changes who decides what: a condition tells the next reader what to do, it never replaces a comment.
 
-## 5. The commands
+## 5. Housekeeping: the Lead's routine
+
+The statuses, assignees, chips and comments of the board are the Lead's to keep true; nobody has to remind it. It runs the pass below at
+the start of every session, after every listener re-arm, after every merge and every release or deploy, and before every report to the
+Owner. It fixes what it finds in the same minute and mentions in one line what it changed. It never touches the Owner's own cards or a
+done card.
+
+1. **Statuses match the facts:** `node tools/auto-run/watch.mjs --as <lead identity> --role lead --audit` prints no mismatch (a pull
+   request that is open or merged, a release, against the card's status). Handle every `[status]` line first.
+2. **`todo` holds nothing unhandled:** `node tools/board.mjs list --status todo`. Every card there is handed out (assignee and `assign`
+   comment), or started by the Lead itself (move 4), or **Waiting for the Owner** (a `question` and the chip). A clear card with none of
+   these gets handled now; a card that has been handed out for more than one pass without `started` gets its thread read.
+3. **`progress` and `pr_review`:** every card has an assignee; every `progress` card has a `started` comment; every `pr_review` card has an
+   open pull request; a card whose pull request was sent back carries `Sent back` until the next `review`.
+4. **Chips:** every card that was handed out has exactly one type chip and one area chip. Every condition chip (`Blocked`,
+   `Waiting for the Owner`, `Sent back`) has an action waiting on it; a stale one is removed.
+5. **Comments:** `node tools/board.mjs inbox` is empty: every comment addressed to the Lead has an answer, and every `question` or
+   `blocked` was answered by a `decision` or a note.
+6. **After a release or deploy:** no `on_main` card is left that was in it; every `on_prod_qa` card carries its test steps (constitution
+   section 3, rule 16).
+7. **Pull requests:** the labels match the cards (`Lead: merged` on merged ones, `Lead: changes needed` only while the Developer has
+   the card); the branches of merged pull requests are deleted from the remote (`git push origin --delete <branch>` when the merge did not do it), and `git fetch --prune` shows no stale ones.
+
+## 6. The commands
 
 ```bash
 node tools/board.mjs move <card> <status>                      # a status move (the table in section 2)

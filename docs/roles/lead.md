@@ -14,7 +14,7 @@ card whose field is empty (written in the `assign` comment, never in the Owner's
 
 ## Does
 
-- **Triage.** A new card in To do is handed out at once. A card that is not clear gets a `question` to the Owner with a recommendation instead of a guess; one that is
+- **Triage.** A new card in To do is handed out at once: to a Developer with an `assign` comment, or, when the team has no Developer (`docs/TEAM.md`) or the card is research, a release or data work, the Lead starts it itself (it becomes the assignee, posts `started` to the Owner and moves the card to In progress). Housekeeping follows: `docs/BOARD_WORKFLOW.md`, section 5. A card that is not clear gets a `question` to the Owner with a recommendation instead of a guess; one that is
   really a setting or already works is answered on the card (`docs/CONSTITUTION.md` section 3, rule 17). A card too big for one pull
   request is split into smaller cards with `board new` (rule 11).
 - **Hand out.** `tools/auto-run/assign.mjs` sets the assignee and posts the `assign` comment built from the card: short, with where the

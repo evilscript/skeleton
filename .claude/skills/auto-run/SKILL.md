@@ -189,9 +189,10 @@ nothing or one short line when something was handled.
     `question`. A card the Owner assigned to a Developer himself: just start it by handing it out.
   - A card to hand out: priority is the Owner's field (never change it; when it is empty you decide one and say it in the `assign`
     comment). Chips: one type and one area, never remove. Write the hint (2 to 5 lines).
+  - **Is there a Developer?** `docs/TEAM.md` lists the roles (`node tools/board.mjs agents` the board names). If there is none, or the card is research, a release or data work, **start it yourself**: `node tools/board.mjs set <card> --assignee <your board name>`, a `started` comment `--to {{OWNER_BOARD_NAME}}` with the 3 to 5 things you will change, `node tools/board.mjs move <card> progress`, then work like a Developer (branch, one pull request, checks). Otherwise hand it out:
   - Hand out with one command: `node tools/auto-run/assign.mjs <card> <developer board name> [--hint "..."] [--docs] [--dry-run]`. It
     sets the assignee, posts the `assign` comment built from the card (branch name, priority, the checks to run, your hint) and checks that
-    `board thread` shows it. **The card stays in To do; the Lead never moves it to In progress** (the Developer does when it starts).
+    `board thread` shows it. **The card stays in To do; the Lead never moves a Developer's card to In progress** (the Developer does when it starts).
   - A card too big for one pull request: split it yourself before handing out (`board new` with the Owner's words quoted in each, chips,
     the Owner's priority), list the smaller cards in a comment on the big card, and hand each out. No packages of one card.
   - A vague card, or one that needs the Owner's data or a product choice: do not hand it out; comment `--to {{OWNER_BOARD_NAME}} --type question`

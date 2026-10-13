@@ -109,7 +109,7 @@ The board is part of every setup. The Cloudflare account exists (step 2). **You 
 
 **When to turn the listener on, and who does it.**
 - **The Lead (you): now.** As the last step of the setup, before the closing report, start it with the identity and role of the Lead, in the wake style your tool supports (`docs/CONSTITUTION.md` section 6): `node tools/auto-run/watch.mjs --as <lead identity> --role lead` as a background monitor (stream, one line per event), or with `--wake --minutes 30`, or `--once` at the start of every turn if the tool supports neither. Check that its first two lines are the `[watch] baseline` lines; that proves it works. The first card from step 7.6 should show up as the first event.
-- **Every later session of the Lead:** the first thing, again. The monitor expires (about every 30 minutes in Claude Code): re-arm it each time, and list the To do cards by hand once after a re-arm, because a card that arrived while it was off is not reported afterwards.
+- **Every later session of the Lead:** the first thing, again, followed by the housekeeping pass (`docs/BOARD_WORKFLOW.md`, section 5). The monitor expires (about every 30 minutes in Claude Code): re-arm it each time, and list the To do cards by hand once after a re-arm, because a card that arrived while it was off is not reported afterwards.
 - **Developers and QA:** the first thing in their first session, as their start prompt says (`docs/onboarding/README.md`): `node tools/auto-run/watch.mjs --as <board name> --role developer` (or `qa`).
 - Tell the Owner plainly: the listener lives inside the agent's session. While the Lead's session is closed, or its listener expired, a card in To do waits until the next session starts the listener.
 

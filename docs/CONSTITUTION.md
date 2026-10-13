@@ -170,7 +170,7 @@ The stored column follows the status. The board page shows some columns split fu
 |---|---|---|---|
 | Backlog | `backlog` ("Backlog") | where every new card starts; the Owner's pool: nobody starts work from it | the Owner |
 | Backlog | `todo` ("To do") | the Owner's go: work should start; top to bottom is the Owner's order; the Lead hands out these cards, and only these | the Owner |
-| In progress | `progress` ("In progress") | a Developer is working | **the Developer**, when it starts (with its `started` comment). The Lead never sets progress: after the `assign` comment the card stays in todo |
+| In progress | `progress` ("In progress") | a Developer is working | **the Developer**, when it starts (with its `started` comment). The Lead never sets progress on a card that has a Developer: after the `assign` comment the card stays in todo. A card the Lead does itself (no Developer in the team, research, release, data) it starts itself |
 | In progress | `pr_review` ("PR reviewing") | a pull request is open and the Lead reviews it | the Lead, when the `review` comment arrives |
 | In progress | `on_main` ("On Main") | merged into `{{DEFAULT_BRANCH}}`, not released or deployed yet | the Lead at the merge |
 | In progress | `spike_ready` ("Spike report ready") | a research card's report is on `{{DEFAULT_BRANCH}}`; the Owner reads it and chooses what to build | the Lead, when the report is pushed (research cards only) |
@@ -180,7 +180,7 @@ The stored column follows the status. The board page shows some columns split fu
 | Done | `done` ("Done") | the Owner tested it | the Owner only |
 
 The Owner's own cards are moved by the Owner alone. A card sent back with "changes needed" goes back to `progress`: the Developer sets it when
-it takes the card up again. A Lead that works on a card of its own moves that card itself. A board change is deployed at once under a
+it takes the card up again. A Lead that works on a card of its own moves that card itself (`docs/BOARD_WORKFLOW.md`, move 4); the Lead's housekeeping pass (same document, section 5) keeps every status, chip and comment true. A board change is deployed at once under a
 standing word, so the Lead sets its card from `pr_review` straight to `on_prod_qa` after the deploy. A project may show fewer statuses
 than these ten (`board/docs/STATUSES.md`).
 

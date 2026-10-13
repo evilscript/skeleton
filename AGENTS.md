@@ -80,7 +80,7 @@ ask. The full role definitions are `docs/CONSTITUTION.md` section 1 and `docs/ro
   from there. The listener lives only as long as the session; re-arm it on every expiry and list To do by hand once after a re-arm.
 - A card has one of ten statuses (`backlog todo progress pr_review on_main spike_ready probe_needed on_prod_qa qa_later
   done`; `docs/CONSTITUTION.md` section 4, `board/docs/STATUSES.md`; the move rules and the conditions inside a status: `docs/BOARD_WORKFLOW.md`). The Owner puts a card in To do when work should start; the Lead
-  hands it out and the card stays in To do; the Developer moves it
+  hands it out (to a Developer if the team has one; otherwise the Lead starts the card itself) and the card stays in To do; the Developer moves it
   to In progress when it starts; the Lead sets PR reviewing when the pull request arrives, On Main at the merge and On Prod for QA at the
   release or deploy; the Owner moves cards to done after testing.
 - **Your identity is your key.** Set `BOARD_AS` to your own board name before the first command; the command line refuses to run without
