@@ -163,6 +163,7 @@ async function start() {
     $("who").textContent = AGENTS[me.name] || me.name;
     await loadProjects();
     await enterProject(pickProject());
+    if (!guideSeen()) openGuide();
     setInterval(async () => {
       if (document.visibilityState !== "visible" || dragging) return;
       try { await checkForChanges(); } catch {}
@@ -190,6 +191,33 @@ async function start() {
   }
 }
 $("logout").onclick = async () => { await call("DELETE", "/api/session"); location.reload(); };
+
+// ------------------------------------------------------------ first-time guide
+
+// A short "how this board works" for whoever opens the board for the first time. It opens by itself once per browser (the flag is
+// remembered in this browser) and stays one click away behind the Guide button.
+const GUIDE_SEEN = "board.guideSeen";
+const guideSeen = () => { try { return localStorage.getItem(GUIDE_SEEN) === "1"; } catch { return true; } };
+function openGuide() {
+  const points = [
+    [t("board.guide.p1.title"), t("board.guide.p1.text")],
+    [t("board.guide.p2.title"), t("board.guide.p2.text")],
+    [t("board.guide.p3.title"), t("board.guide.p3.text")],
+    [t("board.guide.p4.title"), t("board.guide.p4.text")],
+    [t("board.guide.p5.title"), t("board.guide.p5.text")],
+    [t("board.guide.p6.title"), t("board.guide.p6.text")],
+  ];
+  $("guide-form").replaceChildren(
+    el("header", {}, el("strong", {}, t("board.guide.title")), el("span", { style: { flex: "1" } }), el("button", { class: "btn small", value: "close" }, t("common.close"))),
+    el("p", {}, t("board.guide.intro")),
+    el("ol", { class: "guide" }, points.map(([title, text]) => el("li", {}, el("strong", {}, title), el("span", {}, text)))),
+    el("p", { class: "note" }, t("board.guide.reopen")),
+    el("div", { class: "actions" }, el("button", { class: "btn primary", value: "close" }, t("board.guide.got_it"))),
+  );
+  $("guide-dlg").showModal();
+}
+$("guide-btn").onclick = openGuide;
+$("guide-dlg").addEventListener("close", () => { try { localStorage.setItem(GUIDE_SEEN, "1"); } catch {} });
 
 // ------------------------------------------------------------ projects
 
