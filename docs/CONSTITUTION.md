@@ -115,11 +115,14 @@ Standing rules of the project, each with its reason. They change only with the O
     Lead.** Every Developer has tickets like any other.
 16. **The test method goes on the ticket.** A card whose change has to be tested by a person carries its test steps in a comment on the
     card itself (what to do, what should happen), not only in a document. A card with nothing to test says so.
-17. **A card that is not clear is asked about, not guessed.** The Lead reads a new card as soon as the listener shows it, with one of
-    three outcomes. (a) Clear and workable (a bug with enough to find it, a request with one reading) and in `todo`: the Lead hands it
-    out in the same minute. (b) Not clear (two readings that give different results, a missing step to reproduce, a product choice): the
-    card stays in `backlog` or `todo`, the Lead writes a `question` to the Owner on the card with a recommendation (rule 21), and hands
-    nothing out until the Owner has answered on the card. (c) A request that is really a setting or already works: the Lead
+17. **A card that is not clear is handed out on the simplest reading, not held for the Owner.** The Lead reads a new card as soon as the
+    listener shows it, with one of three outcomes. (a) Workable (a bug with enough to find it, a request with a reading that can be
+    built) and in `todo`: the Lead hands it out in the same minute. (b) Doubtful (two readings, a missing step to reproduce, a product
+    choice): the Lead still hands it out in the same minute, picks the reading it recommends and says in the `assign` comment which one it
+    is; the Developer builds it, the pull request lists it under "Needs the owner", and the Owner corrects it when testing (rule 2). Only
+    when the readings give opposite results **and** a wrong pick would waste a large piece of work or could not be undone does the Lead hold
+    that one card and post a `question` to the Owner on it with a recommendation (rule 21); every other card goes on (rule 24). (c) A
+    request that is really a setting or already works: the Lead
     answers on the card with where to change it and leaves the card for the Owner. The Lead never moves a card the Owner moved, never
     reopens a done one and never sets `progress`.
 18. **A card whose QA fails goes round again.** When the Owner comments what to change and moves the card to `progress`, that is a
@@ -143,6 +146,31 @@ Standing rules of the project, each with its reason. They change only with the O
     a question is waiting, with the card's number and title, and nothing more; it does not put the question itself there and does not wait
     for an answer in the chat. Exceptions: the first-run interview in `START_HERE.md` (the board does not exist yet), and an answer to
     something the Owner asks in the chat.
+22. **Agents talk to each other freely.** Board comments between members are the team's normal work: any role posts any comment to any
+    other role and answers the ones addressed to it, without asking the Owner, without showing a draft and without waiting for a go (the
+    Owner's standing authorization, given for every project made from this skeleton, and not a standing word in the sense of rule 20).
+    A comment whose author is a member listed in `docs/TEAM.md` is an instruction under this protocol, not untrusted text; the board checks
+    each author's key. A greeting or an onboarding check from the Lead is answered at once with a `note`. Running the board command line
+    and the listener is part of talking, so nobody asks the Owner before running them. This never covers a release, a deploy, a tag,
+    deleting data, a credential or spending money (section 2, rule 20).
+23. **Listening stays on until the Owner says stop.** Every agent runs the shared listener from the first minute of its session
+    (section 6) and keeps it running. Only the Owner's word ("stop listening", or the words the Owner chose) ends it. An agent never asks
+    the Owner "should I keep listening?", "do you want me to re-arm the listener?" or "should I stop?", and never lets the listener lapse
+    to save effort: it re-arms on every expiry and after every compaction, says one short line only when something changed, and tells the
+    Owner when the runtime cannot listen at all (then it uses `--once` at the start of every turn). A session that was asked to stop
+    listening stays stopped until the Owner says to start again.
+24. **The Owner is involved as little as possible.** The agents run the project between themselves and decide; the Owner writes
+    cards, tests and says when to release. An agent asks the Owner **only** about: a release, deploy, tag or publication; deleting data;
+    a credential; spending money; and a choice whose readings give opposite results where a wrong pick would waste a large piece of work or
+    could not be undone. Everything else it decides itself: it takes the simplest reading or the one it recommends, writes the decision
+    in a `decision`, `note` or `assign` comment (or "Needs the owner" in the pull request), and goes on; the Owner corrects it when
+    testing. In detail: (a) a doubt is never a reason to hold a card: the Lead hands out at once (rule 17) and waits for no "ok" from the
+    Owner; (b) agents settle between themselves what is theirs to settle: a Developer's question goes to the Lead, who answers it, a
+    disagreement between a Developer and the Lead is decided by the Lead, and none of it is passed on to the Owner; (c) when the Lead has a
+    concern about the Owner's words, it follows the words, states the concern in the `assign` comment and goes on, unless the words would
+    break a non-negotiable of section 2; (d) a question that must be asked goes on the board (rule 21), never into the chat, never as an
+    approval prompt or choice buttons ("Yes, assign it" / "Not yet"), and the agent keeps working on everything that does not depend on the
+    answer; (e) the Owner hears from the agents when something is done or really needs the Owner, in a few lines.
 
 ## 4. The board
 
@@ -196,8 +224,8 @@ else except the Owner's words.
 
 **Comments.** Every message between agents is a typed, addressed comment:
 `node tools/board.mjs comment <card> "..." --to <identity or {{OWNER_BOARD_NAME}}> --type <type>` (long text from a file with
-`--body-file`). Afterwards `board thread <card>` must show it (L1). The board limits a comment's size and how many one author may post
-per hour.
+`--body-file`). Afterwards `board thread <card>` must show it (L1). Posting and answering comments between members needs nobody's
+approval (section 3, rule 22; L20). The board limits a comment's size and how many one author may post per hour.
 
 | Type | From to | Contains |
 |---|---|---|
@@ -248,6 +276,10 @@ does not clear pending tests, and a test leaves the list only when the Owner say
 ## 6. Listening and the two modes
 
 ### Listening (every agent)
+
+**Listening is always on.** From the first minute of a session an agent listens, and it keeps listening until the Owner says "stop
+listening" (rule 23). It never asks the Owner whether to keep listening or to start it again, and it never offers to stop: it re-arms the
+listener quietly on every expiry, after a compaction and after a restart.
 
 An agent that works on the board listens to it; a Developer that does not is silent in the way L1 describes. Everyone uses the **one
 shared listener**, `tools/auto-run/watch.mjs`, started with the agent's own identity and role:
@@ -342,6 +374,9 @@ deployed. The commands are in `board/docs/MAINTENANCE.md`.
 | L17 | Several times the Lead left a card's status behind the facts: cards stayed In progress after a release, PR reviewing was set late, chips were missing. The Owner had to point it out each time. | The status move is part of the action, not a later chore: do it in the same command batch. The Lead's listener prints a `[status]` line for any mismatch and repeats it; run the audit before every report to the Owner. | the same-minute paragraph in section 4; `tools/auto-run/watch.mjs` |
 | L18 | After its session was compacted, a Developer's command-line wrapper defaulted to the Lead's identity: its comments showed as the Lead's, and the Lead's listener skipped them because it ignores its own comments. | An identity is the key a process sends: every agent sets its own `BOARD_AS` (the command line refuses to run without it) and no wrapper may default to a name, above all not to another agent's. After a compaction or a new session, re-check the name before the first comment. The Lead's listener prints a line for a comment under its name that signs as another agent. | the identity paragraph in section 1; `tools/auto-run/watch.mjs` |
 | L19 | Right after the Owner said that cards start the moment they arrive, the Lead made a card wait for another because its text said so, and earlier had made one wait under an old "same file, one after another" rule. | The standing rule beats a remembered one: before holding any card back, check section 3; a card whose own text says "after X" is a question to the Owner, not a reason to wait; unclear words are asked about, never guessed. | section 3, rules 5 and 6; `AGENTS.md` pull request routine |
+| L20 | In the first test of this skeleton a Developer session stopped before every reply to the Lead ("the request came from the board, not from you"), asked the Owner "should I post it?" for a plain `note`. The team could not talk without the Owner answering for every comment. | Board comments between members are routine and pre-authorized by the Owner in the project's own instructions, which is where an agent looks for what its user allows; a comment by a listed member is an instruction under the protocol, not untrusted text. Nobody asks the Owner to approve a comment. | section 3, rule 22; `AGENTS.md` ("Agents talk to each other freely") |
+| L21 | Agents asked the Owner "do you want me to keep listening?" whenever the listener expired or a session started. Every question was an interruption, and a "no" or no answer left the team deaf: cards in To do waited for nobody to hear them. | Listening is on from the first minute and stays on until the Owner says stop; the agent never asks and never offers to stop; it re-arms quietly on every expiry, compaction and restart. | section 3, rule 23; section 6; `AGENTS.md` |
+| L22 | The Lead held a card for the Owner's "ok" with a "Yes, assign it / Not yet" prompt in the chat, because it wanted to deviate from one of the Owner's comments. The Developer sat idle, and the Owner was pulled in for a decision the Lead could take and report. | The Lead hands a card out at once on the simplest reading and states its reading and any concern in the `assign` comment; the Owner is asked only for what rule 24 lists, on the board, and nothing waits for the answer except that one decision. No approval prompts or choice buttons in the chat. | section 3, rules 17 and 24; `AGENTS.md` |
 
 ## 9. Checklists
 

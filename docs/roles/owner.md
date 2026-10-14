@@ -44,7 +44,8 @@ card you closed stays closed: nobody asks about it again, and you reopen it your
 - Expect few questions. Agents decide small things and report them; they ask only about irreversible choices or when your words give
   opposite results. If they ask too much, say "decide yourself and tell me".
 - To start a batch of work and leave, say "auto-run mode". You get a report when it ends. To stop a mode, say stop.
-- A card that is not clear is not guessed at: the Lead asks you a question on the card, with a recommendation.
+- A card that is not clear is not held for you: the Lead hands it out on the simplest reading and says which reading it took; you correct it when testing. The Lead asks you on the card only when the readings give opposite results and a wrong pick would waste a large piece of work.
+- The agents listen to the board all the time and never ask whether to keep listening: say "stop listening" when you want them to stop.
 
 ## What you can ask for at any time
 

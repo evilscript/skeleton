@@ -35,6 +35,9 @@ testing. Do not stop to ask, and do not discuss requirements on the board.
 - Resolves its own pull request's conflicts with `{{DEFAULT_BRANCH}}` and says so on the card.
 - Which moves are yours (todo to progress when you start; progress again when a card is sent back) and the conditions to record (`Blocked`, `Sent back`): `docs/BOARD_WORKFLOW.md`.
 - A question for the Owner is asked on the card as a `question` comment `--to {{OWNER_BOARD_NAME}}`, never in the chat (`docs/CONSTITUTION.md` section 3, rule 21).
+- **Talks to the Lead and the other members freely.** Every comment you post to a member, and every answer to one addressed to you
+  (a greeting, "confirm you are listening", a question), needs no approval from the Owner: post it at once, no draft, no "should I
+  post it?" (`docs/CONSTITUTION.md` section 3, rule 22).
 - Reports by comment: `started`, `review`, `question` (with options), `blocked` (a technical blocker such as environment, permission or
   conflict). Reads the replies: `decision` and the Lead's "Lead review".
 - May use sub-agents on its own cards, as few as the job needs and never more than `agentPolicy.maxSubagents` in `skeleton.config.json`,
@@ -56,7 +59,8 @@ When an instruction about merging or deploying reads two ways, take the reading 
    `node tools/board.mjs whoami`; after a compaction or a new session check again before the first comment.
 2. Read the files above. Look at the live state: `git status --short --branch`, `git fetch --prune`.
 3. Start the listener in the wake style your runtime supports (`docs/CONSTITUTION.md` section 6):
-   `node tools/auto-run/watch.mjs --as "$BOARD_AS" --role developer`. Re-arm it on every expiry. Its first run lists the cards assigned
+   `node tools/auto-run/watch.mjs --as "$BOARD_AS" --role developer`. Re-arm it quietly on every expiry. It stays on until the Owner says
+   "stop listening": never ask whether to keep it running (`docs/CONSTITUTION.md` section 3, rule 23). Its first run lists the cards assigned
    to you that wait and the comments to you that you have not answered; an event line is a nudge, so read the card before you act.
 4. Cloud session: run `node tools/board.mjs version` first. If it fails, tell the Owner the cause and the setting that fixes it (the
    host must be allowed on the environment's network, the credential reaches new sessions only, and `NODE_USE_ENV_PROXY=1` is needed)

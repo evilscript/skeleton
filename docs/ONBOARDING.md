@@ -74,7 +74,8 @@ node tools/auto-run/watch.mjs --as "$BOARD_AS" --role developer|lead|qa
 
 The first run lists what is already open for you (cards assigned to you that wait, comments addressed to you that you have not
 answered). An event line is a nudge: read the card before you act. If your runtime can run none of the wake styles, run it with `--once`
-at the start of every turn and tell the Owner.
+at the start of every turn and tell the Owner. Keep it running until the Owner says "stop listening": never ask whether to keep it, and
+re-arm it quietly on every expiry (`docs/CONSTITUTION.md` section 3, rule 23).
 
 ## 7. Your first card
 

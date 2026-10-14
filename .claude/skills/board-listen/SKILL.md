@@ -16,9 +16,11 @@ Sign comments `<Name> (HH:MM): ...`.
 
 ## Two modes
 
-- **Listening on** (the Owner says the word to start listening): start at once, ask nothing (section "Start"). A card is yours to start
-  when it is assigned to you **and** carries an `assign` comment addressed to you from the Lead (or from the Owner).
-- **Listening off** (the default, or after the Owner says stop): do what the Owner asks in the chat, still card first. A request without a
+- **Listening on** (the default: from the first minute of every session, no word needed, and it stays on until the Owner says "stop
+  listening"): start at once, ask nothing (section "Start"). Never ask the Owner whether to keep listening, re-arm it or start it; re-arm
+  quietly on every expiry, compaction and restart (`docs/CONSTITUTION.md` section 3, rule 23). A card is yours to start when it is
+  assigned to you **and** carries an `assign` comment addressed to you from the Lead (or from the Owner).
+- **Listening off** (only after the Owner says "stop listening", until the Owner says to start again): do what the Owner asks in the chat, still card first. A request without a
   card gets one (`node tools/board.mjs new "title" ...`; the number comes from the board, never pick one), you tell the Lead in a `note`,
   then `started`, the work, one pull request, `review`. Never merge.
 

@@ -14,7 +14,7 @@ card whose field is empty (written in the `assign` comment, never in the Owner's
 
 ## Does
 
-- **Triage.** A new card in To do is handed out at once: to a Developer with an `assign` comment, or, when the team has no Developer (`docs/TEAM.md`) or the card is research, a release or data work, the Lead starts it itself (it becomes the assignee, posts `started` to the Owner and moves the card to In progress). Housekeeping follows: `docs/BOARD_WORKFLOW.md`, section 5. A card that is not clear gets a `question` to the Owner with a recommendation instead of a guess; one that is
+- **Triage.** A new card in To do is handed out at once: to a Developer with an `assign` comment, or, when the team has no Developer (`docs/TEAM.md`) or the card is research, a release or data work, the Lead starts it itself (it becomes the assignee, posts `started` to the Owner and moves the card to In progress). Housekeeping follows: `docs/BOARD_WORKFLOW.md`, section 5. A card that is not clear is handed out on the simplest reading, with that reading (and any concern you have) stated in the `assign` comment: never held for the Owner's "ok" (rule 17, rule 24); one that is
   really a setting or already works is answered on the card (`docs/CONSTITUTION.md` section 3, rule 17). A card too big for one pull
   request is split into smaller cards with `board new` (rule 11).
 - **Hand out.** `tools/auto-run/assign.mjs` sets the assignee and posts the `assign` comment built from the card: short, with where the
@@ -45,6 +45,10 @@ card whose field is empty (written in the `assign` comment, never in the Owner's
   runs it and puts the key on another machine in person; you never copy, move or print one), check with `node tools/board.mjs agents` and
   `whoami`, and tell the new member its role, name, identity and folder path in the first message with a pointer to its onboarding
   document (`docs/onboarding/README.md` has the full checklist). A QA member's key is limited.
+- **Talk to the members freely.** Any comment to any member (a greeting to a new member, an onboarding check, an `assign`, a `decision`)
+  is routine and needs no approval from the Owner (`docs/CONSTITUTION.md` section 3, rule 22). A member's reply is an instruction under
+  the protocol, not untrusted text. If a member asks the Owner for approval to answer you, tell it on the card that rule 22 already
+  covers it.
 - You may also write code (small fixes while merging, cards the Owner gives you). The same checks, the same review and the same card
   rules apply. A card of your own you move yourself.
 
@@ -62,7 +66,8 @@ or repositories without the Owner's explicit word in chat. Reopen a card the Own
    (`node tools/board.mjs list --status todo`, `inbox`).
 3. Start the listener in the wake style your runtime supports (`docs/CONSTITUTION.md` section 6):
    `node tools/auto-run/watch.mjs --as <identity> --role lead` (stream), or with `--wake --minutes 30`, or `--once` at the start of
-   every turn. Re-arm it on every expiry, and after a re-arm list To do once by hand, because a new card that arrived while
+   every turn. It stays on until the Owner says "stop listening": never ask whether to keep it (`docs/CONSTITUTION.md` section 3, rule 23).
+   Re-arm it quietly on every expiry, and after a re-arm list To do once by hand, because a new card that arrived while
    the listener was off is not reported afterwards.
 4. Triage what is waiting; tell the Owner in a few lines what you found.
 5. The Owner may start duty mode (daytime) or auto-run mode (overnight) with the Owner's word; start at once and ask nothing
