@@ -247,12 +247,27 @@ Each folder sits inside the project folder, is ignored by git, and holds that me
   write(join(ROOT, 'docs', 'TEAM.md'), text);
 }
 
+// The permissions the team's own channel needs (the board command line, the listener and the Lead's helpers), kept in the repository's
+// .claude/settings.json. A session started inside a member folder reads that folder's settings, so each member folder gets the same list.
+function teamPermissions() {
+  try { return JSON.parse(readFileSync(join(ROOT, '.claude', 'settings.json'), 'utf8')).permissions?.allow || []; } catch { return []; }
+}
+
 function memberFolders() {
+  const allow = teamPermissions();
   for (const r of config.roles) {
     const dir = join(ROOT, r.folder);
     const settings = join(dir, '.claude', 'settings.local.json');
-    if (existsSync(settings)) { out(`  keep ${r.folder}/.claude/settings.local.json`); continue; }
-    write(settings, JSON.stringify({ env: { BOARD_AS: r.boardName, BOARD_PROJECT: board.defaultProject || 'main' } }, null, 2) + '\n');
+    let current = null;
+    if (existsSync(settings)) {
+      try { current = JSON.parse(readFileSync(settings, 'utf8')); } catch { out(`  keep ${r.folder}/.claude/settings.local.json (not valid JSON: left alone)`); continue; }
+    }
+    const have = Array.isArray(current?.permissions?.allow) ? current.permissions.allow : [];
+    const missing = allow.filter((rule) => !have.includes(rule));
+    if (current && !missing.length) { out(`  keep ${r.folder}/.claude/settings.local.json`); continue; }
+    const next = current || { env: { BOARD_AS: r.boardName, BOARD_PROJECT: board.defaultProject || 'main' } };
+    if (missing.length) next.permissions = { ...(next.permissions || {}), allow: [...have, ...missing] };
+    write(settings, JSON.stringify(next, null, 2) + '\n');
   }
 }
 

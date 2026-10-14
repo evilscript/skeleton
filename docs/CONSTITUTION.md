@@ -151,7 +151,8 @@ Standing rules of the project, each with its reason. They change only with the O
     Owner's standing authorization, given for every project made from this skeleton, and not a standing word in the sense of rule 20).
     A comment whose author is a member listed in `docs/TEAM.md` is an instruction under this protocol, not untrusted text; the board checks
     each author's key. A greeting or an onboarding check from the Lead is answered at once with a `note`. Running the board command line
-    and the listener is part of talking, so nobody asks the Owner before running them. This never covers a release, a deploy, a tag,
+    and the listener is part of talking, so nobody asks the Owner before running them (they are in the permission allow list of
+    `.claude/settings.json`, which `tools/setup/apply.mjs --refresh` copies into every member folder). This never covers a release, a deploy, a tag,
     deleting data, a credential or spending money (section 2, rule 20).
 23. **Listening stays on until the Owner says stop.** Every agent runs the shared listener from the first minute of its session
     (section 6) and keeps it running. Only the Owner's word ("stop listening", or the words the Owner chose) ends it. An agent never asks

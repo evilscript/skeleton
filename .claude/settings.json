@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node tools/board.mjs *)",
+      "Bash(BOARD_AS=* node tools/board.mjs *)",
+      "Bash(node */tools/board.mjs *)",
+      "Bash(BOARD_AS=* node */tools/board.mjs *)",
+      "Bash(node tools/auto-run/watch.mjs *)",
+      "Bash(BOARD_AS=* node tools/auto-run/watch.mjs *)",
+      "Bash(node */tools/auto-run/watch.mjs *)",
+      "Bash(BOARD_AS=* node */tools/auto-run/watch.mjs *)",
+      "Bash(node tools/auto-run/assign.mjs *)",
+      "Bash(BOARD_AS=* node tools/auto-run/assign.mjs *)",
+      "Bash(node tools/auto-run/report.mjs *)",
+      "Bash(BOARD_AS=* node tools/auto-run/report.mjs *)",
+      "Bash(node tools/auto-run/review-prep.mjs *)",
+      "Bash(BOARD_AS=* node tools/auto-run/review-prep.mjs *)"
+    ]
+  }
+}

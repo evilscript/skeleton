@@ -181,8 +181,10 @@ nothing or one short line when something was handled.
   moved last (the audit skips those).
 - **`[card] new ...`, `moved ... -> todo`, `assignee ...`, `priority ...`** (a card in To do or In progress; a new card in backlog is
   silent: nobody starts it until the Owner moves it to To do): **triage at once.**
-  - A card that is **not clear** (two readings with different results, no way to reproduce, a product choice): a `question` to the Owner
-    on the card with your recommendation (`docs/CONSTITUTION.md` section 3 rule 21: questions go on the board, not in the chat), and hand nothing out until he answers there. A request that is
+  - A card that is **not clear** (two readings, no way to reproduce, a product choice): hand it out anyway, on the simplest reading or the
+    one you recommend, and say which in the `assign` comment (`docs/CONSTITUTION.md` section 3, rules 17 and 24); the Owner corrects it when
+    testing. Only when the readings give opposite results and a wrong pick would waste a large piece of work or could not be undone: hold
+    that one card and post a `question` to the Owner on it (rule 21: on the board, never in the chat). A request that is
     really a setting or already works: answer on the card (`--to {{OWNER_BOARD_NAME}} --type note`, where to change it).
   - The Owner's own cards: ignore; never move them or comment-assign them. An unassigned card: code to a Developer by load, unless the
     Owner dedicated one; research, release and data to the Lead; what needs the Owner's data or decision stays with the Owner, with a
@@ -195,8 +197,9 @@ nothing or one short line when something was handled.
     `board thread` shows it. **The card stays in To do; the Lead never moves a Developer's card to In progress** (the Developer does when it starts).
   - A card too big for one pull request: split it yourself before handing out (`board new` with the Owner's words quoted in each, chips,
     the Owner's priority), list the smaller cards in a comment on the big card, and hand each out. No packages of one card.
-  - A vague card, or one that needs the Owner's data or a product choice: do not hand it out; comment `--to {{OWNER_BOARD_NAME}} --type question`
-    with a recommendation.
+  - A vague card, or one that needs a product choice: hand it out on your recommended reading (rule 17). Only a card that needs the Owner's
+    own data, or whose readings give opposite results with a costly wrong pick, is held: comment `--to {{OWNER_BOARD_NAME}} --type question`
+    with a recommendation, and hand out everything else.
   - Several new cards at once (five or more, or the Owner asking for a whole plan): ordering them is a PM job, so one PM sub-agent
     pass (`pm-agent.md`) is worth its tokens then.
 - **`[comment] ... -> <Lead> ...`**: `question` or `blocked`: answer at once with a `decision` (short, concrete); a product question

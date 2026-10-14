@@ -145,7 +145,10 @@ test('the first run replaces tokens, generates files and refuses to run twice', 
     assert.match(wrangler, /"FILE_STORAGE": "r2"/);
     assert.ok(!/\{\{/.test(wrangler));
     // member folders, .gitignore, README
-    assert.equal(JSON.parse(readFileSync(join(dir, 'Dev - Bolt', '.claude', 'settings.local.json'), 'utf8')).env.BOARD_AS, 'agent-bolt');
+    const boltSettings = JSON.parse(readFileSync(join(dir, 'Dev - Bolt', '.claude', 'settings.local.json'), 'utf8'));
+    assert.equal(boltSettings.env.BOARD_AS, 'agent-bolt');
+    assert.ok(boltSettings.permissions.allow.includes('Bash(node tools/board.mjs *)'), 'the board command line is allowed in the member folder');
+    assert.ok(boltSettings.permissions.allow.includes('Bash(node tools/auto-run/watch.mjs *)'), 'the listener is allowed in the member folder');
     const ignore = readFileSync(join(dir, '.gitignore'), 'utf8');
     assert.match(ignore, /\/PM - Atlas\//);
     assert.match(ignore, /\/QA - Check\//);
@@ -153,8 +156,16 @@ test('the first run replaces tokens, generates files and refuses to run twice', 
     assert.match(readFileSync(join(dir, 'README.md'), 'utf8'), /^# Acme Portal/);
     // a second first run is refused, a refresh is fine
     assert.equal(apply(dir).code, 3);
+    // a member folder made before the permission list existed gets the list on a refresh and keeps what it had
+    const old = join(dir, 'Dev - Bolt', '.claude', 'settings.local.json');
+    writeFileSync(old, JSON.stringify({ env: { BOARD_AS: 'agent-bolt', MINE: '1' } }));
     const again = apply(dir, '--refresh');
     assert.equal(again.code, 0, again.err);
+    const upgraded = JSON.parse(readFileSync(old, 'utf8'));
+    assert.equal(upgraded.env.MINE, '1', 'what the folder already had is kept');
+    assert.ok(upgraded.permissions.allow.includes('Bash(node tools/board.mjs *)'), 'the permission list is added on a refresh');
+    assert.equal(apply(dir, '--refresh').code, 0);
+    assert.deepEqual(JSON.parse(readFileSync(old, 'utf8')).permissions.allow, upgraded.permissions.allow, 'a second refresh adds nothing twice');
     assert.equal(readFileSync(join(dir, '.gitignore'), 'utf8').match(/\/PM - Atlas\//g).length, 1, 'the member block is replaced, not repeated');
   } finally { cleanup(dir); }
 });
