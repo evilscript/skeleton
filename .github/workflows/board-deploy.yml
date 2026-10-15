@@ -6,7 +6,7 @@
 #                           (and Workers R2 Storage > Edit if the board keeps its files in R2)
 # The account id is not a secret: it is read from board/wrangler.jsonc (board.cloudflareAccountId in skeleton.config.json).
 # The Owner creates the token and adds it with `gh secret set CLOUDFLARE_API_TOKEN` in their own terminal; no agent ever sees it.
-# The Worker's own secrets (SESSION_SECRET, OWNER_PASSWORD, AGENT_KEYS) are set once by `npm run setup:secrets` and survive deploys.
+# The Worker's own secrets (SESSION_SECRET, AGENT_KEYS) are set once by `npm run setup:secrets` and survive deploys.
 #
 # A database migration is never applied unattended: a push that changes board/migrations stops here with a message. Back the
 # database up (board/docs/MAINTENANCE.md), then run this workflow by hand with "migrate" ticked.

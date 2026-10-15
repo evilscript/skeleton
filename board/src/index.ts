@@ -1,5 +1,5 @@
 import { AGENT_LIST, OWNER_ASSIGNEE } from "./agents.ts";
-import { actorName, actorOf, CLEAR_COOKIE, FAILED_SIGN_IN_DELAY_MS, isOwnerPassword, passwordIsSet, sessionCookie, type Actor, type AuthEnv } from "./auth.ts";
+import { actorName, actorOf, CLEAR_COOKIE, LINK_PATTERN, linkHash, sessionCookie, type Actor, type AuthEnv } from "./auth.ts";
 import { dropObjects, fileMode, fileStore, requireStore, type StorageEnv } from "./storage.ts";
 import { assigneeValue as assignee, commentFields, DEFAULT_PROJECT, imageExtension, InputError, keyFromName, MAX_PROJECTS, pageLanguage, priorityValue as priority, projectKey, projectName } from "./validation.ts";
 import { COMMENT_ERRORS } from "../public/board/comment-rules.js";
@@ -10,7 +10,6 @@ interface Env extends AuthEnv, StorageEnv {
   ENVIRONMENT: string;
   PROJECT_NAME: string; // public: the name the pages show (wrangler.jsonc vars)
   BOARD_LANGUAGE?: string; // public: the language of the pages, the pack public/i18n/<code>.json (default en)
-  SIGN_IN_DELAY_MS?: string | number; // how long a failed sign-in waits before it answers (default FAILED_SIGN_IN_DELAY_MS; the tests set 0)
 }
 
 // A card's status says where it is in the work; the stored `col` is the
@@ -22,10 +21,6 @@ type Column = (typeof COLUMN_KEYS)[number];
 const HEADERS = { "cache-control": "no-store", "x-content-type-options": "nosniff" };
 function json(value: unknown, status = 200, extra: Record<string, string> = {}) {
   return Response.json(value, { status, headers: { ...HEADERS, ...extra } });
-}
-async function digest(text: string) {
-  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 const now = () => new Date().toISOString();
 
@@ -642,42 +637,26 @@ async function chipsApi(env: Env, actor: Actor, request: Request, name: string |
 
 // ---------------------------------------------------------------- sign-in
 
-// The owner signs in with the password they chose (the OWNER_PASSWORD secret, at least 12 characters) and gets a signed session
-// cookie. A person's password can be guessed, so a source (the client address, hashed with the session secret) may try 5 times in
-// a window of 15 minutes; then the sign-in answers 429 too_many_attempts until the window is over. The attempt is counted before it
-// is checked, in one statement, so attempts that arrive together are counted one by one; a right password clears the count; a wrong
-// one waits a moment before it is answered.
-const SIGN_IN_ATTEMPTS = 5;
-const SIGN_IN_WINDOW = 15 * 60; // seconds
+// The owner has no password. `npm run owner-link` (scripts/owner-link.sh) puts the hash of a random 256-bit token into owner_links
+// (good for 15 minutes) and opens https://<board>/board/#link=<token> in the owner's browser. The page reads the token from the
+// address fragment (it never reaches a server log, and a chat app that previews the link cannot use it up), sends it here once, and
+// gets a signed session cookie. A link works exactly once: the row is deleted in the statement that finds it, so two requests with
+// the same token cannot both win. A token cannot be guessed (256 bits, looked up by its hash), so there is nothing to throttle.
 async function signIn(request: Request, env: Env, url: URL): Promise<Response> {
   if (request.headers.get("origin") !== url.origin) throw new InputError("invalid_origin", 403);
   const b = await body(request);
-  // Local development only: sign in as the owner without the password.
+  // Local development only: sign in as the owner without a link.
   const local = env.ENVIRONMENT === "development" && ["localhost", "127.0.0.1"].includes(url.hostname);
   if (local && b.dev === true) return json({ name: OWNER_ASSIGNEE.name }, 200, { "set-cookie": await sessionCookie(env) });
-  // The password is compared exactly as it was typed: no trimming.
-  if (typeof b.password !== "string" || !b.password || b.password.length > 500) throw new InputError("invalid_fields");
-  // A missing or too short password (or no session secret) locks the sign-in out.
-  if (!env.SESSION_SECRET || !passwordIsSet(env)) throw new InputError("sign_in_locked", 503);
-  const source = await digest(`${env.SESSION_SECRET}:${request.headers.get("CF-Connecting-IP") || "local"}`);
+  if (typeof b.link !== "string" || !LINK_PATTERN.test(b.link)) throw new InputError("invalid_fields");
+  // Without a session secret no cookie can be signed (`npm run setup:secrets` sets it).
+  if (!env.SESSION_SECRET) throw new InputError("sign_in_locked", 503);
   const t = Math.floor(Date.now() / 1000);
-  const [counted] = await env.DB.batch([
-    env.DB.prepare(
-      `INSERT INTO sign_in_attempts(key, count, expires_at) VALUES (?, 1, ?)
-       ON CONFLICT(key) DO UPDATE SET count = CASE WHEN expires_at <= ? THEN 1 ELSE count + 1 END, expires_at = CASE WHEN expires_at <= ? THEN excluded.expires_at ELSE expires_at END
-       RETURNING count, expires_at`,
-    ).bind(source, t + SIGN_IN_WINDOW, t, t),
-    env.DB.prepare("DELETE FROM sign_in_attempts WHERE expires_at <= ? AND key <> ?").bind(t, source),
+  const [used] = await env.DB.batch([
+    env.DB.prepare("DELETE FROM owner_links WHERE hash = ? AND expires_at > ? RETURNING hash").bind(await linkHash(b.link), t),
+    env.DB.prepare("DELETE FROM owner_links WHERE expires_at <= ?").bind(t),
   ]);
-  const attempt = counted.results[0] as { count: number; expires_at: number } | undefined;
-  if (!attempt) throw new InputError("unavailable", 503);
-  if (attempt.count > SIGN_IN_ATTEMPTS) return json({ error: "too_many_attempts" }, 429, { "retry-after": String(Math.max(1, attempt.expires_at - t)) });
-  if (!(await isOwnerPassword(env, b.password))) {
-    const wait = Number(env.SIGN_IN_DELAY_MS ?? FAILED_SIGN_IN_DELAY_MS);
-    await new Promise((resolve) => setTimeout(resolve, Number.isFinite(wait) && wait >= 0 ? wait : FAILED_SIGN_IN_DELAY_MS));
-    throw new InputError("wrong_password", 403);
-  }
-  await env.DB.prepare("DELETE FROM sign_in_attempts WHERE key = ?").bind(source).run();
+  if (!used.results.length) throw new InputError("link_invalid", 403);
   return json({ name: OWNER_ASSIGNEE.name }, 200, { "set-cookie": await sessionCookie(env) });
 }
 

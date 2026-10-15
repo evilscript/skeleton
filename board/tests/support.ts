@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash, randomBytes } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import worker from "../src/index.ts";
@@ -16,9 +17,22 @@ assert.ok(LEAD && AGENT_NAMES.length >= 2, "these tests need at least two agents
 export const keyOf = (name: string) => `test-key-${name}-`.repeat(4); // a key is at least 32 characters
 
 export type Env = Parameters<typeof worker.fetch>[1];
-// A SESSION_SECRET and an OWNER_PASSWORD for the tests (a password is at least 12 characters).
+// A SESSION_SECRET for the tests. The owner has no password: a sign-in link is a row in owner_links, as scripts/owner-link.sh
+// writes it (the hash of a random token, good for 15 minutes by default); the token is what the page sends.
 export const SESSION_SECRET = "test-session-secret-".repeat(3);
-export const OWNER_PASSWORD = "a test password, not a real one";
+export function ownerLink(sqlite: DatabaseSync, secondsToLive = 900): string {
+  const token = Buffer.from(randomBytes(32)).toString("base64url");
+  sqlite.prepare("INSERT INTO owner_links(hash, expires_at) VALUES (?, ?)").run(createHash("sha256").update(token).digest("hex"), Math.floor(Date.now() / 1000) + secondsToLive);
+  return token;
+}
+// The owner's session cookie, got the way the page gets it: a fresh link, exchanged at /api/session.
+export async function ownerCookie(sqlite: DatabaseSync, env: Env, origin = "http://localhost"): Promise<string> {
+  const res = await worker.fetch(new Request(origin + "/api/session", {
+    method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify({ link: ownerLink(sqlite) }),
+  }), env);
+  assert.equal(res.status, 200);
+  return (res.headers.get("set-cookie") ?? "").split(";")[0];
+}
 
 // An in-memory D1 and a Worker environment. `overrides` replaces environment values:
 // database({ FILES: undefined }) is a board without file storage, database({ FILES: undefined, FILE_STORAGE: "d1" }) one
@@ -66,7 +80,7 @@ export function database(overrides: Record<string, unknown> = {}) {
   };
   const env = {
     DB, AGENT_KEYS: JSON.stringify(Object.fromEntries(AGENT_NAMES.map((name) => [name, keyOf(name)]))),
-    OWNER_PASSWORD, SESSION_SECRET, ENVIRONMENT: "development", FILES: {}, SIGN_IN_DELAY_MS: 0, ...overrides,
+    SESSION_SECRET, ENVIRONMENT: "development", FILES: {}, ...overrides,
   } as unknown as Env;
   const request = (path: string, method = "GET", body?: unknown, author = DEV) => worker.fetch(new Request("http://localhost" + path, {
     method, headers: { authorization: "Bearer " + keyOf(author), "content-type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}),

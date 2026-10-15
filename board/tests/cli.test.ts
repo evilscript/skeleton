@@ -72,8 +72,8 @@ test("the help lists the variables and every status; an unknown command fails", 
   assert.equal((await run(["nonsense"], {})).code, 1);
 });
 
-test("the Owner's password has no command: the CLI never knows it", async () => {
-  // The Owner signs in on the page with a password they chose; nothing on a machine stores it, so there is nothing to print.
+test("the Owner's sign-in has no command: the CLI never knows it", async () => {
+  // The Owner signs in on the page with a one-time link (scripts/owner-link.sh); the CLI never makes or keeps one, so there is nothing to print.
   const help = await run([], {});
   assert.doesNotMatch(help.out, /owner-key/);
   const r = await run(["owner-key"], {});

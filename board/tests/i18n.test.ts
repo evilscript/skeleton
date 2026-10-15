@@ -4,7 +4,7 @@ import { test } from "node:test";
 import worker from "../src/index.ts";
 import { COMMENT_TYPES, PRIORITIES, pageLanguage } from "../src/validation.ts";
 import { STATUS_SLUGS, VIEW_COLUMNS } from "../public/board/statuses.js";
-import { database, DEV, keyOf, OWNER_PASSWORD } from "./support.ts";
+import { database, DEV, keyOf, ownerCookie } from "./support.ts";
 
 // The pages' language: every text lives in a pack, public/i18n/<code>.json. These tests keep the packs complete and in step with
 // the markup and the scripts that use them, and run the loader (public/shared/i18n.js) against a stand-in page.
@@ -88,8 +88,8 @@ test("every error code the Worker can answer has a message, except those the pag
   // cannot be reached. The generic message ("Something went wrong: <code>") covers them if one does turn up.
   const never = ["invalid_origin", "not_removed", "unavailable"];
   for (const code of codes) if (!never.includes(code)) assert.ok(board.includes(code), `the board page has no message for ${code}`);
-  // The sign-in's three answers.
-  for (const code of ["wrong_password", "too_many_attempts", "sign_in_locked"]) assert.ok(board.includes(code), code);
+  // The sign-in's two answers.
+  for (const code of ["link_invalid", "sign_in_locked"]) assert.ok(board.includes(code), code);
 });
 
 test("every action the Worker logs on a card has a word in the activity list", async () => {
@@ -116,10 +116,7 @@ test("every action the Worker logs on a card has a word in the activity list", a
     assert.equal((await request("/api/cards/1", "DELETE")).status, 200);
     assert.equal((await request("/api/cards/1/restore", "POST")).status, 200);
     assert.equal((await request("/api/cards/1", "DELETE")).status, 200);
-    const session = await worker.fetch(new Request("http://localhost/api/session", {
-      method: "POST", headers: { origin: "http://localhost", "content-type": "application/json" }, body: JSON.stringify({ password: OWNER_PASSWORD }),
-    }), env);
-    const cookie = (session.headers.get("set-cookie") ?? "").split(";")[0];
+    const cookie = await ownerCookie(sqlite, env);
     assert.equal((await worker.fetch(new Request("http://localhost/api/cards/1?purge=1", { method: "DELETE", headers: { cookie, origin: "http://localhost", "x-board": "1" } }), env)).status, 200);
     const logged = sqlite.prepare("SELECT DISTINCT action FROM activity WHERE card_no IS NOT NULL").all().map((r) => String(r.action));
     const words = Object.keys(en).filter((k) => k.startsWith("board.action.")).map((k) => k.slice("board.action.".length));

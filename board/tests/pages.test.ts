@@ -31,12 +31,13 @@ test("pictures are shrunk before upload only on a board that keeps its files in 
   assert.match(shrink, /catch \{\}\s*return file;/); // a canvas that fails: the file as it is
 });
 
-test("the sign-in form asks for a password, sends it as typed and says nothing about keys", () => {
+test("the sign-in page has no password: it takes a one-time link from the address fragment, sends it once and removes it from the address", () => {
   const html = read("public/board/index.html");
-  assert.match(html, /<input class="field" type="password" id="gate-password" name="password"[^>]*autocomplete="current-password" required \/>/);
+  assert.doesNotMatch(html, /type="password"|<form[^>]*id="gate-form"/); // nothing to type
   const board = read("public/board/board.js");
-  assert.match(board, /\{ password: field\.value \}/); // not trimmed
-  assert.doesNotMatch(board + html, /owner key|owner-key/i);
+  assert.match(board, /location\.hash\.match\(\/\^#link=\(\[A-Za-z0-9_-\]\+\)\$\/\)/); // only the fragment, never the query string
+  assert.match(board, /history\.replaceState\(null, "", location\.pathname \+ location\.search\);[\s\S]*\{ link: m\[1\] \}/); // out of the address bar before it is sent
+  assert.doesNotMatch(board + html, /owner key|owner-key|password/i);
 });
 
 test("the content security policy is as strict as it can be: same-origin scripts, styles and requests only", () => {

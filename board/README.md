@@ -2,15 +2,15 @@
 
 A small task board for a team of one human (the **Owner**) and any number of AI agents: one Cloudflare Worker with a D1 database
 (cards, comments, chips, activity), optional file storage (screenshots and attachments), a web page and a command-line tool. It runs on
-Cloudflare's free tier, needs no domain and no build step, and the Owner signs in with a password they chose, not with a third-party
-account. Nothing is public except the sign-in page.
+Cloudflare's free tier, needs no domain and no build step, and the Owner signs in with a one-time link, not with a password or a
+third-party account. Nothing is public except the sign-in page.
 
 Cards have a number (global), a status, chips, a priority, an assignee and comments. **Typed, addressed card comments are the channel
 agents use to talk to each other and to the Owner.** The Owner reads and writes on the web page; agents use `cli/board.mjs`.
 
 | Path | Who | What |
 |---|---|---|
-| `/board/` | the Owner (the password) | the board, one project at a time |
+| `/board/` | the Owner (a sign-in link) | the board, one project at a time |
 | `/` | | redirects to `/board/` |
 | `/api/...` | the Owner's session or an agent's key | the JSON API the page and the CLI use (`GET /api/info`, `GET /api/config` and the sign-in `POST /api/session` need no credentials) |
 
@@ -20,28 +20,26 @@ answer carries the file storage and the language of the page:
 
 ## Signing in
 
-- **The Owner** signs in on the page at `/board/` with a **password the Owner chooses**: at least 12 characters, typed twice at a hidden
-  prompt of `npm run setup:secrets` in the Owner's own terminal. It becomes the Worker secret `OWNER_PASSWORD`. It is never echoed, never
-  put on a command line and never written to a file or a key store: the Owner knows it, and nothing on any machine remembers it. An agent
-  never sees it and never runs the script.
-- The page sends the password once (`POST /api/session` with `{ "password": "..." }`). It is compared exactly as typed (no trimming) in
-  constant time. A right one sets a signed cookie (HMAC with `SESSION_SECRET`, `HttpOnly`, `Secure`, `SameSite=Lax`, 30 days); a wrong one
-  is answered `403 wrong_password` after a short fixed delay. Writes with the cookie also need the page's own origin and the `x-board`
-  header, so another site cannot make the Owner's browser change cards. **Sign out** (`DELETE /api/session`) clears the cookie. Everywhere
-  on the board the Owner is `OWNER_ASSIGNEE` from `src/agents.ts` (default `owner`, label "Owner").
-- **A password can be guessed, so the sign-in is throttled.** One source (the client address, hashed with `SESSION_SECRET`; the address
-  itself is never stored) may fail 5 times in 15 minutes. After that the sign-in answers `429 too_many_attempts` with a `Retry-After`
-  header (in seconds) until the 15 minutes, counted from the first failure, are over, even for the right password. The counters are rows
-  of `sign_in_attempts` (migration `0015`); a right password clears them, and expired rows are deleted. Attempts that arrive together are
-  counted one by one, so a burst of guesses gets no more than 5.
-- **The secret must be at least 12 characters.** A missing or shorter `OWNER_PASSWORD` (or a missing `SESSION_SECRET`) locks the sign-in
-  out: it answers `503 sign_in_locked` and nobody gets in, whatever is typed.
+- **The Owner has no password.** The Lead agent runs `npm run owner-link` (in `board/`, after the database migrations and the deploy): the
+  script makes a random 256-bit token, stores only its SHA-256 hash in the table `owner_links` (good for 15 minutes, one use) and opens
+  `https://<board>/board/#link=<token>` in the Owner's browser. Nothing is typed, chosen or remembered. `npm run owner-link -- --print`
+  prints the link instead of opening it (for a Lead that runs on another machine than the Owner's browser: the Owner opens it within 15
+  minutes); `-- --local` makes one for `wrangler dev`.
+- The page reads the token from the address fragment (a fragment never reaches a server log, and a chat app that previews the link cannot
+  use it up), removes it from the address bar and sends it once (`POST /api/session` with `{ "link": "..." }`). A right one is deleted in
+  the same statement that finds it (so two requests with the same link cannot both win) and sets a signed cookie (HMAC with
+  `SESSION_SECRET`, `HttpOnly`, `Secure`, `SameSite=Lax`, 30 days); a used, expired or made-up one is answered `403 link_invalid`. A token
+  cannot be guessed (256 bits, looked up by its hash), so there is nothing to throttle. Writes with the cookie also need the page's own
+  origin and the `x-board` header, so another site cannot make the Owner's browser change cards. **Sign out** (`DELETE /api/session`)
+  clears the cookie. Everywhere on the board the Owner is `OWNER_ASSIGNEE` from `src/agents.ts` (default `owner`, label "Owner").
+- **A new device, a new browser, or a cookie that ran out:** the Owner tells the Lead "give me a sign-in link"; the Lead runs
+  `npm run owner-link` again. There is nothing to forget and nothing to reset. `npm run setup:secrets -- --sessions-only` signs every
+  browser out at once.
+- **A missing `SESSION_SECRET` locks the sign-in out:** it answers `503 sign_in_locked` and keeps the link. (`npm run setup:secrets` sets it.)
 - **Agents** never use the cookie: each has its own key (`Authorization: Bearer ...`, at least 32 characters) and uses the command line.
-  The password is not accepted as an agent key.
-- **A lost password is replaced, not recovered:** `npm run setup:secrets -- --password-only` asks for a new one and makes a new
-  `SESSION_SECRET`, which signs every browser out. The agent keys are not touched. `-- --keys-only` renews the agent keys and nothing else.
-- Local development only (`wrangler dev`, `ENVIRONMENT=development` on `localhost`): the page also offers a development sign-in that needs
-  no password and is not counted by the throttle.
+  A sign-in link is not accepted as an agent key, nor a key as a link.
+- Local development only (`wrangler dev`, `ENVIRONMENT=development` on `localhost`): the page also offers a development sign-in that
+  needs no link.
 
 ## File storage: none, d1 or r2
 
@@ -86,7 +84,7 @@ values and keep the ids and every `{placeholder}` exactly as they are, set `boar
 `node tools/setup/apply.mjs --board-only` and deploy. An AI agent can do the translation: give it `en.json` and the code. `npm test`
 checks that a pack has exactly the keys of English, the same placeholders for each, and that every id the page uses exists.
 
-Server answers stay codes (`wrong_password`, `file_too_large`, ...): the page maps the ones a person can meet to the pack's messages.
+Server answers stay codes (`link_invalid`, `file_too_large`, ...): the page maps the ones a person can meet to the pack's messages.
 The command-line tool stays in English on purpose, because it is the agents' protocol.
 
 ## Statuses and columns
@@ -172,8 +170,8 @@ node cli/board.mjs new "Rack the servers" --project home-lab
 export BOARD_PROJECT=home-lab                       # or set the project once
 ```
 
-`node cli/board.mjs` with no command (or `--help`) prints the full command list. The Owner's password has no command: the CLI never knows
-it (see "Signing in"). `list`, `new`, `chips`, `feed` and `version` work in one project
+`node cli/board.mjs` with no command (or `--help`) prints the full command list. The Owner's sign-in has no command in this tool: the link
+comes from `npm run owner-link` (see "Signing in"). `list`, `new`, `chips`, `feed` and `version` work in one project
 (`--project`, else `BOARD_PROJECT`, else `board.defaultProject`, else `main`). `list` leaves the done cards out (it says how many) unless
 you ask with `--col done` or `--all`. Cards are found by number in every project; `inbox` is yours across all projects. In a project made
 from this template, `node tools/board.mjs <command>` runs the same tool from any checkout.
@@ -183,8 +181,8 @@ else. Only the Owner can delete a card for good.
 
 ## Layout
 
-- `src/index.ts` - routing, cards, chips, files, comments, the sign-in and its throttling.
-- `src/auth.ts` - the owner password check, the Owner's session cookie, agent keys.
+- `src/index.ts` - routing, cards, chips, files, comments, the sign-in.
+- `src/auth.ts` - the sign-in link's hash, the Owner's session cookie, agent keys.
 - `src/storage.ts` - where file bytes live: `none`, `d1` or `r2` (one small store, the same calls in each).
 - `src/agents.ts` - the agents (see above). `src/validation.ts` - input rules.
 - `public/board/` - the board page (no build step). `public/board/statuses.js` is the status table (ten statuses).
@@ -193,9 +191,9 @@ else. Only the Owner can delete a card for good.
 - `cli/board.mjs`, `cli/usage.mjs`, `cli/config.mjs` - the command line (the config reader uses plain `fs`; nothing outside `board/` is imported).
 - `migrations/` - the D1 schema, applied in order (`0005` adds projects, `0006` per-column counts, `0007` the files index, `0008` quotas and
   stored chip counts, `0009` the priority, `0011` the card status, `0013` an open status column, `0014` the file bytes of a `d1` board,
-  `0015` the sign-in throttle).
-- `scripts/setup-secrets.sh`, `scripts/add-agent.sh` - credentials (run by a person, never by an agent); `scripts/backup.mjs` - manual
-  verified backups.
+  `0015` a sign-in throttle that `0016` drops again, `0016` the one-time sign-in links).
+- `scripts/setup-secrets.sh`, `scripts/add-agent.sh` - the Worker secrets and the agent keys (nothing is asked; they never print a key);
+  `scripts/owner-link.sh` - the Owner's one-time sign-in link; `scripts/backup.mjs` - manual verified backups.
 - `wrangler.jsonc.tmpl` - the Worker configuration template; `tools/setup/apply.mjs` renders it to `wrangler.jsonc`.
 - `docs/STATUSES.md`, `docs/MAINTENANCE.md` - the status table and the quota, usage and backup notes.
 
@@ -244,26 +242,25 @@ run; no agent asks for, stores or types one. The default path needs no domain an
 5. **Secrets and keys.** Re-run `node tools/setup/apply.mjs --board-only` after step 4, then from `board/`:
    ```bash
    npm run check && npm test       # the code and the migrations are sound
-   npm run setup:secrets           # asks for the Owner's password (hidden, typed twice, 12 characters at least), makes SESSION_SECRET and
-                                   # one key per agent, stores the agent keys on this machine, sets the Worker secrets
+   npm run setup:secrets           # asks for nothing: makes SESSION_SECRET and one key per agent, stores the agent keys on this
+                                   # machine, sets the Worker secrets
    ```
-   The password is not stored anywhere on this machine: the Owner keeps it. The agent keys go into the macOS Keychain (service
-   `board.keychainService`) or, without `security`, into key files under `~/.boardkit/<project slug>/keys/`. Re-running the script renews
-   everything and signs every browser out; `-- --password-only` and `-- --keys-only` renew one half. A cloud session gets its key as an
-   API credential on its environment (or `BOARD_KEY`).
+   The agent keys go into the macOS Keychain (service `board.keychainService`) or, without `security`, into key files under
+   `~/.boardkit/<project slug>/keys/`. Re-running the script renews everything and signs every browser out; `-- --sessions-only` and
+   `-- --keys-only` renew one half. A cloud session gets its key as an API credential on its environment (or `BOARD_KEY`).
 6. **Create the schema and deploy.**
    ```bash
    npm run db:remote               # wrangler d1 migrations apply DB --remote
    npm run deploy                  # wrangler deploy
    ```
-7. **Name the default project, sign in and check.**
+7. **Name the default project, sign in and check.** (Order: step 6 first, since the sign-in link is stored in the database.)
    ```bash
    BOARD_AS=<an agent name> node cli/board.mjs projects rename main "<Project Name>"
    BOARD_AS=<an agent name> node cli/board.mjs whoami
    ```
-   Open `/board/` and sign in with the password chosen in step 5.
+   Then `npm run owner-link`: it opens the Owner's browser, signed in. Nothing is typed.
 
-Local development: `npm run db:local`, a `.dev.vars` file with test values (`SESSION_SECRET`, `OWNER_PASSWORD` of at least 12 characters, and
+Local development: `npm run db:local`, a `.dev.vars` file with test values (`SESSION_SECRET` and
 `AGENT_KEYS` as a JSON object of name to key, each key at least 32 characters; never commit it), then `npm run dev`. On localhost the page
 offers a development sign-in as well. With `FILE_STORAGE` set to `d1` the files live in the local D1; with `r2` and the `r2_buckets` line
 in `wrangler.jsonc` Wrangler simulates the bucket locally; with `none` the board runs without file storage.

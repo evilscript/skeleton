@@ -48,7 +48,8 @@ reads two ways, take the reading that leaves the act to the role that owns it, o
 1. **Release only on the Owner's word.** Nobody tags, publishes or uploads on their own. The one exception is a board deploy under a
    standing word the Owner has granted (section 3).
 2. **No credentials.** Never ask for, store, type or move tokens, passwords or keys; use the tools that are already signed in. The
-   Owner creates keys and places them on machines in person.
+   Owner creates keys and places them on machines in person. The board has no password: the Owner's one-time sign-in link
+   (`npm run owner-link`) works once and runs out in 15 minutes, so the Lead may run it and open it in the Owner's browser.
 3. **`{{DEFAULT_BRANCH}}` moves only after a green run** on exactly the files being merged: the minimum scope at merge, and the full
    suite on the release tree when deploying (section 3). Nobody bypasses a hook or a failing check.
 4. **One channel between agents: typed, addressed comments on the board card** (section 4). A description edit, a pull request comment

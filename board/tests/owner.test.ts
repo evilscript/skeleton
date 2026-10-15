@@ -2,14 +2,13 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { test } from "node:test";
 import worker from "../src/index.ts";
-import { FAILED_SIGN_IN_DELAY_MS } from "../src/auth.ts";
 import { OWNER_ASSIGNEE } from "../src/agents.ts";
-import { database, keyOf, LEAD, OWNER_PASSWORD, SESSION_SECRET, type Env } from "./support.ts";
+import { database, keyOf, LEAD, ownerCookie, ownerLink, SESSION_SECRET, type Env } from "./support.ts";
 
-// The owner signs in with the password they chose (OWNER_PASSWORD) and gets a signed session cookie.
+// The owner has no password: a one-time link (a row in owner_links, made by scripts/owner-link.sh) is exchanged for a signed session cookie.
 const ORIGIN = "http://localhost";
-const signIn = (env: Env, body: unknown, origin = ORIGIN, ip?: string) => worker.fetch(new Request(origin + "/api/session", {
-  method: "POST", headers: { origin, "content-type": "application/json", ...(ip ? { "cf-connecting-ip": ip } : {}) }, body: JSON.stringify(body),
+const signIn = (env: Env, body: unknown, origin = ORIGIN) => worker.fetch(new Request(origin + "/api/session", {
+  method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify(body),
 }), env);
 const cookieOf = (res: Response) => (res.headers.get("set-cookie") ?? "").split(";")[0];
 // What the board page sends: the cookie, its own origin and the CSRF header.
@@ -24,152 +23,117 @@ function forge(secret: string, name: string, exp: number) {
 }
 const soon = () => Math.floor(Date.now() / 1000) + 3600;
 
-test("a wrong password is refused; the right one sets the session cookie", async () => {
+test("a sign-in link works once and sets the session cookie; a wrong one is refused", async () => {
   const { sqlite, env } = database();
   try {
-    // (each from its own address, so the throttling that the later tests cover does not come into it)
-    let n = 0;
-    const from = () => `192.0.2.${++n}`;
-    for (const password of ["wrong", OWNER_PASSWORD.slice(0, -1), OWNER_PASSWORD + "x", "x".repeat(OWNER_PASSWORD.length), OWNER_PASSWORD.toUpperCase()]) {
-      const res = await signIn(env, { password }, ORIGIN, from());
-      assert.equal(res.status, 403, password);
-      assert.deepEqual(await res.json(), { error: "wrong_password" });
-      assert.equal(res.headers.get("set-cookie"), null);
-    }
-    // No password at all, or not text, or the old field, is a malformed request, not a wrong password.
-    for (const body of [{}, { password: 12345 }, { password: "" }, { password: "x".repeat(501) }, { key: OWNER_PASSWORD }]) {
+    // No link at all, or not text, or the wrong shape, or the old password field, is a malformed request, not a wrong link.
+    for (const body of [{}, { link: 12345 }, { link: "" }, { link: "short" }, { link: "x".repeat(129) }, { link: "has spaces in it " + "x".repeat(30) }, { password: "a test password, not a real one" }]) {
       assert.equal((await signIn(env, body)).status, 400, JSON.stringify(body).slice(0, 40));
     }
-    // The sign-in has to come from the board's own origin.
-    const bad = await worker.fetch(new Request(ORIGIN + "/api/session", {
-      method: "POST", headers: { origin: "https://elsewhere.example.test", "content-type": "application/json" }, body: JSON.stringify({ password: OWNER_PASSWORD }),
-    }), env);
-    assert.equal(bad.status, 403);
-    assert.deepEqual(await bad.json(), { error: "invalid_origin" });
+    // A well-formed token nobody made is refused, and sets no cookie.
+    const wrong = await signIn(env, { link: "A".repeat(43) });
+    assert.equal(wrong.status, 403);
+    assert.deepEqual(await wrong.json(), { error: "link_invalid" });
+    assert.equal(wrong.headers.get("set-cookie"), null);
 
-    const ok = await signIn(env, { password: OWNER_PASSWORD }, ORIGIN, from());
+    // The sign-in has to come from the board's own origin, and a refused one does not use the link up.
+    const token = ownerLink(sqlite);
+    const elsewhere = await worker.fetch(new Request(ORIGIN + "/api/session", {
+      method: "POST", headers: { origin: "https://elsewhere.example.test", "content-type": "application/json" }, body: JSON.stringify({ link: token }),
+    }), env);
+    assert.equal(elsewhere.status, 403);
+    assert.deepEqual(await elsewhere.json(), { error: "invalid_origin" });
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM owner_links").get()?.n, 1);
+
+    const ok = await signIn(env, { link: token });
     assert.equal(ok.status, 200);
     assert.deepEqual(await ok.json(), { name: OWNER_ASSIGNEE.name });
     const header = ok.headers.get("set-cookie") ?? "";
     assert.match(header, /^session=[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+;/);
     for (const flag of ["HttpOnly", "Secure", "SameSite=Lax"]) assert.ok(header.includes(flag), flag);
-    // A password is compared as typed: spaces and a newline around it make it a different password.
-    for (const typed of [` ${OWNER_PASSWORD}`, `${OWNER_PASSWORD} `, `${OWNER_PASSWORD}\n`]) assert.equal((await signIn(env, { password: typed }, ORIGIN, from())).status, 403, JSON.stringify(typed));
+
+    // The link is used up: the same one again is refused, and its row is gone.
+    const again = await signIn(env, { link: token });
+    assert.equal(again.status, 403);
+    assert.deepEqual(await again.json(), { error: "link_invalid" });
+    assert.equal(again.headers.get("set-cookie"), null);
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM owner_links").get()?.n, 0);
   } finally { sqlite.close(); }
 });
 
-test("a password with spaces or characters outside ASCII works, and 12 characters is the least", async () => {
-  // Spaces inside are part of the password; so are characters outside ASCII (written as escapes here).
-  for (const password of ["correct horse battery staple", "\u5bc6\u7801".repeat(6), "p\u00e4ssw\u00f6rd-\u00fcber", "\u{1F600}".repeat(12)]) {
-    const board = database({ OWNER_PASSWORD: password });
-    try {
-      assert.equal((await signIn(board.env, { password })).status, 200, password);
-      assert.equal((await signIn(board.env, { password: password + "!" })).status, 403, password);
-    } finally { board.sqlite.close(); }
-  }
-});
-
-test("the password is only for signing in; a missing or short OWNER_PASSWORD locks the sign-in out", async () => {
+test("a link older than its 15 minutes is refused, and expired rows are cleared when anyone tries", async () => {
   const { sqlite, env } = database();
   try {
-    // It is not an agent key: as a bearer token it opens nothing.
-    const bearer = await worker.fetch(new Request(ORIGIN + "/api/me", { headers: { authorization: "Bearer " + OWNER_PASSWORD } }), env);
+    const old = ownerLink(sqlite, -1);
+    const stale = ownerLink(sqlite, -3600);
+    const fresh = ownerLink(sqlite, 60);
+    const res = await signIn(env, { link: old });
+    assert.equal(res.status, 403);
+    assert.deepEqual(await res.json(), { error: "link_invalid" });
+    assert.equal(res.headers.get("set-cookie"), null);
+    // Every attempt sweeps the expired rows (the stale one went too); the fresh one stays and still works.
+    const left = sqlite.prepare("SELECT COUNT(*) AS n FROM owner_links").get()?.n;
+    assert.equal(left, 1);
+    assert.equal((await signIn(env, { link: stale })).status, 403);
+    assert.equal((await signIn(env, { link: fresh })).status, 200);
+  } finally { sqlite.close(); }
+});
+
+test("only the hash of a link is stored, and requests that arrive together cannot all use the same link", async () => {
+  const { sqlite, env } = database();
+  try {
+    const token = ownerLink(sqlite);
+    const rows = sqlite.prepare("SELECT hash, expires_at FROM owner_links").all() as { hash: string; expires_at: number }[];
+    assert.equal(rows.length, 1);
+    assert.match(rows[0].hash, /^[0-9a-f]{64}$/);
+    assert.ok(!JSON.stringify(rows).includes(token));
+    const left = rows[0].expires_at - Math.floor(Date.now() / 1000);
+    assert.ok(left > 890 && left <= 900, `${left} seconds`);
+    // Twelve requests with the one link: exactly one gets in.
+    const results = await Promise.all(Array.from({ length: 12 }, () => signIn(env, { link: token })));
+    assert.deepEqual(results.map((r) => r.status).sort(), [200, ...Array(11).fill(403)]);
+  } finally { sqlite.close(); }
+});
+
+test("a link is not an agent key and a key is not a link; without a SESSION_SECRET nobody can sign in and the link is kept", async () => {
+  const { sqlite, env } = database();
+  try {
+    // The token as a bearer token opens nothing.
+    const token = ownerLink(sqlite);
+    const bearer = await worker.fetch(new Request(ORIGIN + "/api/me", { headers: { authorization: "Bearer " + token } }), env);
     assert.equal(bearer.status, 401);
+    // An agent's key, offered as a link, gets nobody a cookie.
+    const asLink = await signIn(env, { link: keyOf(LEAD) });
+    assert.notEqual(asLink.status, 200);
+    assert.equal(asLink.headers.get("set-cookie"), null);
   } finally { sqlite.close(); }
-  // Fewer than 12 characters (counted as characters, not bytes), or none at all: nobody gets in, not even with that very value.
-  for (const OWNER of [undefined, "", "short", "x".repeat(11), "\u5bc6".repeat(11), "\u{1F600}".repeat(6)]) {
-    const board = database({ OWNER_PASSWORD: OWNER });
-    try {
-      const res = await signIn(board.env, { password: OWNER || "anything at all" });
-      assert.equal(res.status, 503, String(OWNER));
-      assert.deepEqual(await res.json(), { error: "sign_in_locked" });
-      assert.equal(res.headers.get("set-cookie"), null);
-      assert.equal(board.sqlite.prepare("SELECT COUNT(*) AS n FROM sign_in_attempts").get()?.n, 0); // a locked-out attempt is not counted
-    } finally { board.sqlite.close(); }
-  }
-  // Exactly 12 is enough.
-  const exact = database({ OWNER_PASSWORD: "k".repeat(12) });
-  try { assert.equal((await signIn(exact.env, { password: "k".repeat(12) })).status, 200); } finally { exact.sqlite.close(); }
-  // Without a SESSION_SECRET no cookie can be signed, so even the right password is refused.
+  // Without a SESSION_SECRET no cookie can be signed: the sign-in is switched off, and the link is not spent on it.
   const bare = database({ SESSION_SECRET: undefined });
-  try { assert.equal((await signIn(bare.env, { password: OWNER_PASSWORD })).status, 503); } finally { bare.sqlite.close(); }
+  try {
+    const token = ownerLink(bare.sqlite);
+    const res = await signIn(bare.env, { link: token });
+    assert.equal(res.status, 503);
+    assert.deepEqual(await res.json(), { error: "sign_in_locked" });
+    assert.equal(res.headers.get("set-cookie"), null);
+    assert.equal(bare.sqlite.prepare("SELECT COUNT(*) AS n FROM owner_links").get()?.n, 1);
+  } finally { bare.sqlite.close(); }
 });
 
-test("after 5 failed sign-ins from one source, the sign-in answers 429 until the 15 minutes are over", async () => {
-  const { sqlite, env } = database();
+test("the password tables and setting are gone: no OWNER_PASSWORD, no sign-in counter", async () => {
+  const { sqlite, env } = database({ OWNER_PASSWORD: "a leftover secret from an old deployment" });
   try {
-    const ip = "198.51.100.7";
-    for (let i = 1; i <= 5; i++) assert.equal((await signIn(env, { password: "wrong " + i }, ORIGIN, ip)).status, 403, `attempt ${i}`);
-    // The sixth is refused, even with the right password, and says when to come back.
-    const locked = await signIn(env, { password: OWNER_PASSWORD }, ORIGIN, ip);
-    assert.equal(locked.status, 429);
-    assert.deepEqual(await locked.json(), { error: "too_many_attempts" });
-    assert.equal(locked.headers.get("set-cookie"), null);
-    const wait = Number(locked.headers.get("retry-after"));
-    assert.ok(wait > 890 && wait <= 900, `Retry-After ${wait}`);
-    assert.equal((await signIn(env, { password: "wrong again" }, ORIGIN, ip)).status, 429);
-    // Another source is not affected.
-    assert.equal((await signIn(env, { password: "wrong" }, ORIGIN, "198.51.100.8")).status, 403);
-    assert.equal((await signIn(env, { password: OWNER_PASSWORD }, ORIGIN, "198.51.100.9")).status, 200);
-    // The counter holds a hash, never the address; the window is 15 minutes from the first failure.
-    const rows = sqlite.prepare("SELECT key, count, expires_at FROM sign_in_attempts ORDER BY count DESC").all() as { key: string; count: number; expires_at: number }[];
-    assert.match(rows[0].key, /^[0-9a-f]{64}$/);
-    assert.ok(!JSON.stringify(rows).includes("198.51.100"));
-    assert.equal(rows[0].count, 7);
-    // When the window is over the source may try again, and the count starts from one.
-    sqlite.exec("UPDATE sign_in_attempts SET expires_at = expires_at - 901");
-    assert.equal((await signIn(env, { password: "wrong" }, ORIGIN, ip)).status, 403);
-    assert.equal(sqlite.prepare("SELECT count FROM sign_in_attempts WHERE count = 1 AND expires_at > ?").all(Math.floor(Date.now() / 1000)).length >= 1, true);
-    assert.equal((await signIn(env, { password: OWNER_PASSWORD }, ORIGIN, ip)).status, 200);
-  } finally { sqlite.close(); }
-});
-
-test("a right password clears the count; rows of other sources are removed when their window is over", async () => {
-  const { sqlite, env } = database();
-  try {
-    const ip = "203.0.113.5";
-    for (let i = 0; i < 4; i++) assert.equal((await signIn(env, { password: "nope" }, ORIGIN, ip)).status, 403);
-    assert.equal((await signIn(env, { password: OWNER_PASSWORD }, ORIGIN, ip)).status, 200);
-    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sign_in_attempts").get()?.n, 0); // cleared
-    // So four more failures and a success still work, and the fifth failure is the last one allowed.
-    for (let i = 0; i < 4; i++) assert.equal((await signIn(env, { password: "nope" }, ORIGIN, ip)).status, 403);
-    assert.equal((await signIn(env, { password: OWNER_PASSWORD }, ORIGIN, ip)).status, 200);
-    for (let i = 0; i < 5; i++) assert.equal((await signIn(env, { password: "nope" }, ORIGIN, ip)).status, 403);
-    assert.equal((await signIn(env, { password: OWNER_PASSWORD }, ORIGIN, ip)).status, 429);
-    // An old row of somebody else goes when anyone tries.
-    sqlite.exec("INSERT INTO sign_in_attempts(key,count,expires_at) VALUES ('old-source',5,1)");
-    assert.equal((await signIn(env, { password: "nope" }, ORIGIN, "203.0.113.6")).status, 403);
-    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sign_in_attempts WHERE key='old-source'").get()?.n, 0);
-  } finally { sqlite.close(); }
-});
-
-test("attempts that arrive together are counted one by one: only 5 get as far as the password", async () => {
-  const { sqlite, env } = database();
-  try {
-    const ip = "192.0.2.44";
-    const results = await Promise.all(Array.from({ length: 12 }, (_, i) => signIn(env, { password: "guess " + i }, ORIGIN, ip)));
-    const statuses = results.map((r) => r.status).sort();
-    assert.deepEqual(statuses, [403, 403, 403, 403, 403, 429, 429, 429, 429, 429, 429, 429]);
-  } finally { sqlite.close(); }
-});
-
-test("a failed sign-in waits a moment before it answers; a right one does not", async () => {
-  const { sqlite, env } = database({ SIGN_IN_DELAY_MS: undefined }); // the Worker's own delay, not the tests' zero
-  try {
-    assert.ok(FAILED_SIGN_IN_DELAY_MS >= 500);
-    let started = Date.now();
-    assert.equal((await signIn(env, { password: "wrong" })).status, 403);
-    assert.ok(Date.now() - started >= FAILED_SIGN_IN_DELAY_MS - 50, "a wrong password was answered at once");
-    started = Date.now();
-    assert.equal((await signIn(env, { password: OWNER_PASSWORD })).status, 200);
-    assert.ok(Date.now() - started < FAILED_SIGN_IN_DELAY_MS, "the right password waited");
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'sign_in_attempts'").get()?.n, 0);
+    // A Worker that still has the old secret set ignores it: a password gets nobody in.
+    const res = await signIn(env, { password: "a leftover secret from an old deployment" });
+    assert.equal(res.status, 400);
+    assert.equal(res.headers.get("set-cookie"), null);
   } finally { sqlite.close(); }
 });
 
 test("the session cookie makes the caller the owner, as OWNER_ASSIGNEE", async () => {
   const { sqlite, env } = database();
   try {
-    const cookie = cookieOf(await signIn(env, { password: OWNER_PASSWORD }));
+    const cookie = await ownerCookie(sqlite, env);
     assert.ok(cookie.startsWith("session="));
     const none = await worker.fetch(new Request(ORIGIN + "/api/me"), env);
     assert.equal(none.status, 401);
@@ -215,7 +179,7 @@ test("a cookie signed with another secret, expired, tampered or for another name
     // Signed with another secret: a real cookie from another board.
     const other = database({ SESSION_SECRET: "another-secret-".repeat(4) });
     try {
-      const foreign = cookieOf(await signIn(other.env, { password: OWNER_PASSWORD }));
+      const foreign = await ownerCookie(other.sqlite, other.env);
       assert.ok(foreign.startsWith("session="));
       assert.equal((await me(foreign)).status, 401);
     } finally { other.sqlite.close(); }
@@ -245,12 +209,7 @@ test("the development sign-in works only on localhost with ENVIRONMENT=developme
     assert.equal(dev.status, 200);
     assert.deepEqual(await dev.json(), { name: OWNER_ASSIGNEE.name });
     assert.equal((await page(env, cookieOf(dev), "/api/me")).status, 200);
-    // It needs no password and is not counted: a source that is locked out can still use it on localhost.
-    const ip = "198.51.100.77";
-    for (let i = 0; i < 6; i++) await signIn(env, { password: "nope" }, ORIGIN, ip);
-    assert.equal((await signIn(env, { password: OWNER_PASSWORD }, ORIGIN, ip)).status, 429);
-    assert.equal((await signIn(env, { dev: true }, ORIGIN, ip)).status, 200);
-    // Production, or a real host: `dev` is just a request without a password.
+    // Production, or a real host: `dev` is just a request without a link.
     const production = database({ ENVIRONMENT: "production" });
     try {
       const res = await signIn(production.env, { dev: true });

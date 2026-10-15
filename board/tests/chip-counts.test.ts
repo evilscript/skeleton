@@ -49,8 +49,8 @@ function rename(db: DatabaseSync, project: number, from: string, to: string) {
   } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
 
-test("fresh migrations keep the composite chip key and install 0008 to 0015 after deployed migrations", () => {
-  assert.deepEqual(migrations.map((name) => name.slice(0, 4)), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015"]);
+test("fresh migrations keep the composite chip key and install 0008 to 0016 after deployed migrations", () => {
+  assert.deepEqual(migrations.map((name) => name.slice(0, 4)), ["0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016"]);
   withDatabase((db) => {
     const columns = db.prepare("PRAGMA table_info(chips)").all();
     assert.deepEqual(columns.filter((row) => Number(row.pk) > 0).map((row) => row.name), ["project_id", "name"]);

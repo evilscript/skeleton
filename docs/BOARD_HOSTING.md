@@ -16,10 +16,8 @@ No domain is needed. The `<worker name>` is `board.workerName` in `skeleton.conf
 | Step | Who |
 |---|---|
 | Create the free Cloudflare account (https://dash.cloudflare.com/sign-up: email, password, confirm the email; no card, no domain) | **you** |
-| `npx wrangler login` in your own terminal (a browser opens, you approve) | **you** |
-| `npm run setup:secrets` in your own terminal: you choose the board password at a hidden prompt (at least 12 characters, typed twice) | **you** |
-| Sign in to the board page with that password | **you** |
-| Everything else: install, create the database, write the configuration, tests, database migrations, deploy, check the agents' access, create the first card | the agent (one yes from you for the whole block) |
+| Click **Allow** on the Cloudflare page that `npx wrangler login` opens in your browser | **you** (the agent starts the command) |
+| Everything else: install, create the database, write the configuration, tests, database migrations, deploy, the secrets (`npm run setup:secrets`, nothing is asked), the sign-in link (`npm run owner-link`: your browser opens, signed in), check the agents' access, create the first card | the agent (one yes from you for the whole block) |
 | Optional: one repository secret so pushes deploy by themselves | **you**, see below |
 
 ## Where card files are kept
@@ -48,11 +46,11 @@ gh secret set CLOUDFLARE_API_TOKEN --repo <owner>/<repo>
 
 The token is made in the Cloudflare dashboard (My Profile, API Tokens, Create Token, template "Edit Cloudflare Workers", limited to your account). Check that it has Account > D1 > Edit (add it if the template lacks it) and, if the files are in R2, Workers R2 Storage > Edit. The account id is not a secret: it is read from `board/wrangler.jsonc`.
 
-Without the secret the workflow does nothing. The first deploy and the Worker's own secrets (`npm run setup:secrets`) are always done once by you: GitHub never sees the board's keys or your password. A push that changes a database migration stops the workflow on purpose: back the database up first (`board/docs/MAINTENANCE.md`), then run the workflow by hand with "migrate" ticked.
+Without the secret the workflow does nothing. The first deploy and the Worker's own secrets (`npm run setup:secrets`) are done once, by the agent on your machine: GitHub never sees the board's keys. A push that changes a database migration stops the workflow on purpose: back the database up first (`board/docs/MAINTENANCE.md`), then run the workflow by hand with "migrate" ticked.
 
 ## Signing in
 
-There is no third-party login. You sign in to the board page with the **password** you chose during setup. It is stored nowhere on your machine, only you know it. After 5 wrong tries from one place the page pauses sign-in from there for 15 minutes (if you lock yourself out, `npx wrangler d1 execute DB --remote --command "DELETE FROM sign_in_attempts"` in `board/` clears it). A forgotten password is replaced with `npm run setup:secrets -- --password-only` in `board/` (it also ends every open session). Agents never sign in to the page; each has its own key and uses the command line. Cards come only from you and the agents: the board has no public intake form.
+There is no password and no third-party login. The agent makes you a **one-time sign-in link** (`npm run owner-link` in `board/`) and your browser opens it: it signs you in for 30 days. The link works once and runs out after 15 minutes, and only its hash is stored, so it is harmless if anybody sees it afterwards. On another device, in another browser, or when the 30 days are over, tell your Lead agent "give me a sign-in link"; there is nothing to remember and nothing to reset. If your Lead runs on a different machine than the browser you use, it gives you the link in the chat (`npm run owner-link -- --print`): open it within 15 minutes. Agents never sign in to the page; each has its own key and uses the command line. Cards come only from you and the agents: the board has no public intake form.
 
 ## Why not GitHub Pages
 

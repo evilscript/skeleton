@@ -1,12 +1,8 @@
 #!/bin/bash
-# Run by the Owner in their own terminal. Agents never run this script: it asks for the
-# Owner's password and creates credentials, and no agent asks for, stores or types one.
+# Run by the Lead agent (or by the Owner in any terminal): it asks for nothing. There is no
+# board password; the Owner signs in with a one-time link (`npm run owner-link`, scripts/owner-link.sh).
 #
 # What it sets (Worker secrets, through Wrangler; nothing is printed):
-#   - OWNER_PASSWORD: the password the Owner signs in with on the board page. The Owner
-#     chooses it here, at a hidden prompt typed twice (at least 12 characters). It is
-#     never echoed, never put on a command line and never written to a file or a key
-#     store: the Owner knows it, and nothing on this machine remembers it.
 #   - SESSION_SECRET: signs the Owner's session cookie. A new one signs every browser out.
 #   - AGENT_KEYS: one key for each agent in src/agents.ts (a JSON object of name -> key).
 #     Each key is also saved on this machine, where cli/board.mjs reads it: in the macOS
@@ -17,25 +13,23 @@
 #     Authorization, prefix Bearer) or into BOARD_KEY: read it from the Keychain or the key file.
 #
 # Modes:
-#   (none)            everything: a new password, a new SESSION_SECRET and new agent keys
-#   --password-only   a new password and a new SESSION_SECRET (every signed-in browser is
-#                     signed out); the agent keys are not touched. This is also how a lost
-#                     password is reset: npm run setup:secrets -- --password-only
-#   --keys-only       new agent keys only; the password and the sessions stay as they are.
-#                     The old agent keys stop working at once (a cloud session's credential
-#                     has to be updated too). scripts/add-agent.sh adds one agent without
-#                     touching the others.
-# Needs: node (>= 22.14), npx, a terminal, and a Wrangler that is signed in (`npx wrangler login`).
-# Usage: bash scripts/setup-secrets.sh [--password-only | --keys-only]
+#   (none)            everything: a new SESSION_SECRET and new agent keys
+#   --sessions-only   a new SESSION_SECRET only: every signed-in browser is signed out (the
+#                     Owner gets back in with `npm run owner-link`); the agent keys are not touched
+#   --keys-only       new agent keys only; the sessions stay as they are. The old agent keys
+#                     stop working at once (a cloud session's credential has to be updated
+#                     too). scripts/add-agent.sh adds one agent without touching the others.
+# Needs: node (>= 22.14), npx, and a Wrangler that is signed in (`npx wrangler login`).
+# Usage: bash scripts/setup-secrets.sh [--sessions-only | --keys-only]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 mode=all
 case "${1:-}" in
   "") ;;
-  --password-only) mode=password ;;
+  --sessions-only) mode=sessions ;;
   --keys-only) mode=keys ;;
-  *) echo "usage: bash scripts/setup-secrets.sh [--password-only | --keys-only]" >&2; exit 2 ;;
+  *) echo "usage: bash scripts/setup-secrets.sh [--sessions-only | --keys-only]" >&2; exit 2 ;;
 esac
 
 # The project settings, read from the repository root's skeleton.config.json.
@@ -58,22 +52,7 @@ store_key() { # name key
   fi
 }
 
-password=""
-if [ "$mode" != "keys" ]; then
-  # Ask first, before anything is changed anywhere. A terminal is required: the password is typed, never piped in.
-  if [ ! -t 0 ]; then echo "This script asks for the password at a hidden prompt: run it yourself in a terminal." >&2; exit 1; fi
-  IFS= read -r -s -p "Choose the password for the board (at least 12 characters, hidden): " password; echo
-  IFS= read -r -s -p "Type it again: " again; echo
-  if [ "$password" != "$again" ]; then echo "The two entries differ. Nothing was changed." >&2; exit 1; fi
-  unset again
-  # Counted the way the Worker counts it (characters, not bytes); the value reaches node on its standard input, not on a command line.
-  if ! printf '%s' "$password" | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>process.exit(Array.from(s).length>=12&&s===s.trim()?0:1))'; then
-    echo "The password must be at least 12 characters and must not start or end with a space. Nothing was changed." >&2
-    exit 1
-  fi
-fi
-
-if [ "$mode" != "password" ]; then
+if [ "$mode" != "sessions" ]; then
   names=$(node --experimental-strip-types --no-warnings -e 'import("./src/agents.ts").then((m) => console.log(m.AGENT_NAMES.join(" ")))')
   echo "Local keys (every agent in src/agents.ts gets a new key; a cloud session's credential must be updated too):"
   json="{"
@@ -89,15 +68,14 @@ fi
 
 echo "Cloudflare${worker:+ (Worker $worker)}:"
 if [ "$mode" != "keys" ]; then
-  put OWNER_PASSWORD "$password"
   put SESSION_SECRET "$(random)"
 fi
-if [ "$mode" != "password" ]; then
+if [ "$mode" != "sessions" ]; then
   put AGENT_KEYS "$json"
 fi
-unset password json key
+unset json key
 if [ "$mode" = "keys" ]; then
   echo "Done. Test: BOARD_AS=<an agent name> node cli/board.mjs agents"
 else
-  echo "Done. Open the board page and sign in with the password you chose."
+  echo "Done. To sign in, the Owner needs a link: npm run owner-link"
 fi

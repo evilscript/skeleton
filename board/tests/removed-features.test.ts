@@ -91,30 +91,38 @@ test("nothing in this folder names the old inbox or the public form", () => {
   assert.deepEqual(hits, []);
 });
 
-test("the setup script refuses to run without a terminal, and takes only its three modes", () => {
-  const script = join(ROOT, "scripts/setup-secrets.sh");
-  // No terminal on standard input (as in an agent's shell or a pipe): the password cannot be typed, so it stops before it asks or changes anything.
-  const piped = spawnSync("bash", [script, "--password-only"], { input: "hunter2 hunter2 hunter2\n", encoding: "utf8" });
-  assert.equal(piped.status, 1);
-  assert.match(piped.stderr, /run it yourself in a terminal/);
-  assert.doesNotMatch(piped.stdout + piped.stderr, /hunter2/);
-  const everything = spawnSync("bash", [script], { input: "x\n", encoding: "utf8" });
-  assert.equal(everything.status, 1);
-  const unknown = spawnSync("bash", [script, "--nonsense"], { encoding: "utf8" });
+test("the setup scripts ask for nothing: no password, no prompt, and a secret or a link is never printed by accident", () => {
+  const secrets = join(ROOT, "scripts/setup-secrets.sh");
+  const link = join(ROOT, "scripts/owner-link.sh");
+  // A wrong mode or option is a usage error before anything is changed (these runs touch nothing).
+  const unknown = spawnSync("bash", [secrets, "--nonsense"], { encoding: "utf8" });
   assert.equal(unknown.status, 2);
-  assert.match(unknown.stderr, /usage: bash scripts\/setup-secrets\.sh \[--password-only \| --keys-only\]/);
-  // How it handles the password, from its text: a hidden prompt typed twice, whitespace kept, 12 characters at least, standard input only.
-  const source = readFileSync(script, "utf8");
-  assert.match(source, /IFS= read -r -s -p "Choose the password/);
-  assert.match(source, /IFS= read -r -s -p "Type it again/);
-  assert.match(source, /Array\.from\(s\)\.length>=12/);
-  assert.match(source, /printf '%s' "\$2" \| npx wrangler secret put "\$1"/); // a secret goes to Wrangler on its standard input
-  // The only places the password is read are the comparison of the two entries, the length check (through a pipe to node) and
-  // the call that sets the secret: never an echo, a file, a key store or a command line.
-  for (const line of source.split("\n").filter((l) => l.includes("$password"))) {
-    assert.match(line, /^\s*(if \[ "\$password" != "\$again" \]|if ! printf '%s' "\$password" \| node -e |put OWNER_PASSWORD "\$password")/, line);
-  }
-  assert.ok(!/set -x|--password(?!-only)|store_key[^\n]*password/.test(source));
-  assert.match(source, /--password-only\) mode=password/);
+  assert.match(unknown.stderr, /usage: bash scripts\/setup-secrets\.sh \[--sessions-only \| --keys-only\]/);
+  const unknownLink = spawnSync("bash", [link, "--nonsense"], { encoding: "utf8" });
+  assert.equal(unknownLink.status, 2);
+  assert.match(unknownLink.stderr, /usage: bash scripts\/owner-link\.sh \[--print\] \[--local\]/);
+
+  const source = readFileSync(secrets, "utf8");
+  // The script's text without its comment lines (they may say that there is no password).
+  const code = (text: string) => text.split("\n").filter((l) => !l.trim().startsWith("#")).join("\n");
+  // There is no board password: nothing is read from the keyboard and no terminal is needed.
+  assert.doesNotMatch(code(source), /OWNER_PASSWORD|read -r|read -s|-t 0|(?<!generic-)password/i);
+  assert.match(source, /--sessions-only\) mode=sessions/);
   assert.match(source, /--keys-only\) mode=keys/);
+  assert.match(source, /printf '%s' "\$2" \| npx wrangler secret put "\$1"/); // a secret goes to Wrangler on its standard input
+  assert.ok(!/set -x/.test(source));
+
+  const script = readFileSync(link, "utf8");
+  assert.doesNotMatch(code(script), /set -x|read -r|read -s|password/i);
+  // Only the hash and the expiry go into the database: the token itself never does.
+  assert.match(script, /INSERT INTO owner_links\(hash, expires_at\) VALUES \('\$hash', \$expires\)/);
+  // The token appears in three places: where it is made, where it is hashed and where the link is put together.
+  for (const line of script.split("\n").filter((l) => l.includes("$token"))) {
+    assert.match(line, /^\s*(token=\$\(node -p 'require\("crypto"\)\.randomBytes\(32\)\.toString\("base64url"\)'\)|hash=\$\(printf '%s' "\$token" \| node -e |link="\$url\/board\/#link=\$token")/, line);
+  }
+  // The finished link is opened in a browser, or printed only on request (--print) or when no browser can be opened.
+  for (const line of script.split("\n").filter((l) => /\$link/.test(l) && !l.trim().startsWith("#"))) {
+    assert.match(line, /^\s*(link="\$url|if command -v open >\/dev\/null 2>&1; then open "\$link"|elif command -v xdg-open .* xdg-open "\$link"|elif command -v cmd\.exe .* cmd\.exe \/c start "" "\$link"|printf '%s\\n' "\$link")/, line);
+  }
+  assert.match(script, /--print\) print=1/);
 });

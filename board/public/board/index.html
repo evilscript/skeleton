@@ -14,14 +14,12 @@
   </head>
   <body>
     <div class="gate" id="gate" hidden>
-      <form class="box" id="gate-form">
+      <div class="box" id="gate-box">
         <h1 id="gate-title">Board</h1>
-        <p id="gate-text" data-i18n="board.gate.text">Enter the password to open the board.</p>
-        <input class="field" type="password" id="gate-password" name="password" placeholder="Password" aria-label="Password" data-i18n-attr="placeholder:board.gate.password; aria-label:board.gate.password" autocomplete="current-password" required />
-        <button class="btn primary" id="gate-submit" type="submit" data-i18n="board.gate.submit">Sign in</button>
-        <p class="hint" data-i18n="board.gate.hint">Forgot it? The Owner resets it with <code data-slot="command">npm run setup:secrets -- --password-only</code>.</p>
+        <p id="gate-text" data-i18n="board.gate.text">This board opens with a one-time sign-in link. Ask your Lead agent for one.</p>
+        <p class="hint" data-i18n="board.gate.hint">The Lead runs <code data-slot="command">npm run owner-link</code> in the board folder; the link opens this page and keeps you signed in for 30 days.</p>
         <div id="dev-signin"></div>
-      </form>
+      </div>
     </div>
 
     <div id="app" hidden>

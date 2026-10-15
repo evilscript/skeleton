@@ -56,7 +56,7 @@
 //   BOARD_PROJECT   the project key; default board.defaultProject
 // Without those, the key for BOARD_AS is read from the macOS Keychain (service board.keychainService from the config,
 // account = the board name), then from the key file ~/.boardkit/<slug>/keys/<board name> (mode 600; <slug> is
-// project.slug, or "default" without a config). The Owner signs in on the page with a password they chose; the CLI never sees it.
+// project.slug, or "default" without a config). The Owner signs in on the page with a one-time link (scripts/owner-link.sh); the CLI never sees it.
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";

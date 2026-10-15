@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import worker from "../src/index.ts";
 import { bytesOf, D1_MAX_FILE, fileMode, MAX_ATTACHMENT } from "../src/storage.ts";
-import { database, DEV, keyOf, OWNER_PASSWORD, type Env } from "./support.ts";
+import { database, DEV, keyOf, ownerCookie, type Env } from "./support.ts";
 
 // File storage is optional and has three modes (FILE_STORAGE): "r2" (the FILES bucket), "d1" (a table in the database) and
 // "none". These tests run the Worker in each: with a bucket (an in-memory stand-in that records every call), with the
@@ -32,12 +32,9 @@ function upload(env: Env, no: number, kind: string, name: string, type: string, 
   return worker.fetch(new Request(`${ORIGIN}/api/cards/${no}/files`, { method: "POST", headers: asDev, body: form }), env);
 }
 const get = (env: Env, path: string, method = "GET") => worker.fetch(new Request(ORIGIN + path, { method, headers: asDev }), env);
-// The owner, as the board page does it: sign in with the owner key, then send the cookie with the page's own headers.
-async function asOwner(env: Env, path: string, method: string) {
-  const session = await worker.fetch(new Request(ORIGIN + "/api/session", {
-    method: "POST", headers: { origin: ORIGIN, "content-type": "application/json" }, body: JSON.stringify({ password: OWNER_PASSWORD }),
-  }), env);
-  const cookie = (session.headers.get("set-cookie") ?? "").split(";")[0];
+// The owner, as the board page does it: sign in with a one-time link, then send the cookie with the page's own headers.
+async function asOwner(sqlite: Parameters<typeof ownerCookie>[0], env: Env, path: string, method: string) {
+  const cookie = await ownerCookie(sqlite, env, ORIGIN);
   return worker.fetch(new Request(ORIGIN + path, { method, headers: { cookie, origin: ORIGIN, "x-board": "1" } }), env);
 }
 const idOf = async (res: Response) => ((await res.json()) as { files: { id: string }[] }).files[0].id;
@@ -99,7 +96,7 @@ test("r2: info says so, uploads are stored, served and deleted", async () => {
     assert.equal(r2.objects.size, 1); // the attachment is left
     // Purging is the owner's.
     assert.equal((await get(env, "/api/cards/1", "DELETE")).status, 200);
-    assert.equal((await asOwner(env, "/api/cards/1?purge=1", "DELETE")).status, 200);
+    assert.equal((await asOwner(sqlite, env, "/api/cards/1?purge=1", "DELETE")).status, 200);
     assert.equal(r2.objects.size, 0);
     assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM files").get()?.n, 0);
     assert.equal(count(sqlite, "SELECT COUNT(*) AS n FROM file_blobs"), 0); // the database holds no bytes in this mode
@@ -177,7 +174,7 @@ test("none: deleting a file and purging a card with files still clean the databa
     assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM files WHERE id='f1'").get()?.n, 0);
     assert.equal((await get(env, "/api/cards/1", "DELETE")).status, 200); // removed, not yet gone
     assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM files").get()?.n, 1);
-    assert.equal((await asOwner(env, "/api/cards/1?purge=1", "DELETE")).status, 200);
+    assert.equal((await asOwner(sqlite, env, "/api/cards/1?purge=1", "DELETE")).status, 200);
     assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM files").get()?.n, 0);
     assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM cards WHERE no=1").get()?.n, 0);
   } finally { sqlite.close(); }
@@ -229,7 +226,7 @@ test("d1: info says so, a file round-trips through the database, delete and purg
       sqlite.exec(`INSERT INTO file_blobs(id,data) VALUES ('m${i}', x'00')`);
     }
     assert.equal((await get(env, "/api/cards/1", "DELETE")).status, 200);
-    assert.equal((await asOwner(env, "/api/cards/1?purge=1", "DELETE")).status, 200);
+    assert.equal((await asOwner(sqlite, env, "/api/cards/1?purge=1", "DELETE")).status, 200);
     assert.equal(count(sqlite, "SELECT COUNT(*) AS n FROM file_blobs"), 1);
     assert.equal(sqlite.prepare("SELECT id FROM file_blobs").get()?.id, other);
     assert.equal(count(sqlite, "SELECT COUNT(*) AS n FROM files"), 1);

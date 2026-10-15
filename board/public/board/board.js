@@ -1,7 +1,7 @@
 // The board: one page per project (a switcher in the top bar), columns for the
 // statuses (Done in a floating panel), cards with chips, assignee, description,
 // screenshots and files. Data comes from the Worker's /api; the owner signs
-// in with the password they chose, the agents use the CLI with their own keys.
+// in with a one-time link (scripts/owner-link.sh), the agents use the CLI with their own keys.
 // A card has a status (docs/STATUSES.md); a column draws one bordered layer
 // per status it holds. public/board/statuses.js says which.
 import { fitImage } from "../shared/shrink.js";
@@ -133,9 +133,8 @@ function toast(text, undo) {
   toast.timer = setTimeout(() => (box.hidden = true), undo ? 7000 : 3000);
 }
 // What an error code from the Worker says to the user: the pack's board.error.<code>; the codes are the Worker's, they stay English.
-// `retryAfter` is the Retry-After header of a too_many_attempts answer, in seconds.
-const errorText = (code, retryAfter) => (has("board.error." + code)
-  ? t("board.error." + code, { max: formatSize(MAX_FILE), minutes: Math.max(1, Math.ceil(Number(retryAfter) / 60) || 15) })
+const errorText = (code) => (has("board.error." + code)
+  ? t("board.error." + code, { max: formatSize(MAX_FILE) })
   : t("board.error.generic", { code }));
 
 async function call(method, path, data) {
@@ -145,7 +144,7 @@ async function call(method, path, data) {
   const res = await fetch(path, opts);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    toast(errorText(body.error || res.status, res.headers.get("retry-after")));
+    toast(errorText(body.error || res.status));
     throw new Error(body.error || String(res.status));
   }
   return body;
@@ -153,8 +152,19 @@ async function call(method, path, data) {
 
 // ------------------------------------------------------------ sign-in
 
+// A sign-in link carries its token after the # of the address (#link=...): the token never reaches a server log and a chat
+// app that previews the link cannot use it up. It is sent once, and taken out of the address bar at once. True when it failed
+// (already used, or older than 15 minutes), so the page can say so.
+async function useSignInLink() {
+  const m = location.hash.match(/^#link=([A-Za-z0-9_-]+)$/);
+  if (!m) return false;
+  history.replaceState(null, "", location.pathname + location.search);
+  try { await call("POST", "/api/session", { link: m[1] }); return false; } catch { return true; }
+}
+
 async function start() {
   showBrand();
+  const linkFailed = await useSignInLink();
   const res = await fetch("/api/me");
   if (res.ok) {
     me = await res.json();
@@ -177,14 +187,7 @@ async function start() {
     return;
   }
   $("gate").hidden = false;
-  $("gate-form").onsubmit = async (ev) => {
-    ev.preventDefault();
-    const field = $("gate-password");
-    $("gate-submit").disabled = true;
-    try { await call("POST", "/api/session", { password: field.value }); location.reload(); }
-    catch { field.value = ""; field.focus(); }
-    finally { $("gate-submit").disabled = false; }
-  };
+  if (linkFailed) $("gate-text").textContent = t("board.gate.expired");
   const cfg = await fetch("/api/config").then((r) => r.json()).catch(() => ({}));
   if (cfg.development) {
     $("dev-signin").append(el("button", { type: "button", class: "btn", onclick: async () => { await call("POST", "/api/session", { dev: true }); location.reload(); } }, t("board.gate.dev")));
