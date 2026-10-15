@@ -16,6 +16,13 @@ There is **no Owner password** (the old `OWNER_PASSWORD` secret is not read any 
 renews the agent keys and nothing else (every agent's key has to be placed again, a cloud session's credential too). With no option the
 script does both. `scripts/add-agent.sh <name>` adds one agent without touching the others.
 
+## Who may use the page
+
+`board.access` in `skeleton.config.json` (the Worker variable `BOARD_ACCESS`) is `open` (the kit's default: anybody who has the address reads and changes the
+board), `view` (anybody reads; the Owner's sign-in link and the agents' keys change it) or `private` (everything needs a link or a key). To
+lock a board down: change the setting, `node tools/setup/apply.mjs --board-only`, `npm run deploy`, `npm run owner-link`. A missing or misspelt
+value is `private`. An open board has no sign-in links at all; the next section is for `view` and `private`.
+
 ## Sign-in links
 
 The Owner signs in with a link that `npm run owner-link` makes: a random token whose **SHA-256 hash** is stored in `owner_links` (migration

@@ -232,3 +232,76 @@ test("the public config says only whether this is local development", async () =
     assert.deepEqual(await production.json(), { development: false });
   } finally { sqlite.close(); }
 });
+
+// ---------------------------------------------------------------- who may use the page without signing in (BOARD_ACCESS)
+
+const fetchAs = (env: Env, path: string, method = "GET", extra: Record<string, string> = {}, body?: unknown) => worker.fetch(new Request(ORIGIN + path, {
+  method, headers: { "content-type": "application/json", ...extra }, ...(body ? { body: JSON.stringify(body) } : {}),
+}), env);
+const pageHeaders = { origin: ORIGIN, "x-board": "1" }; // what the board page itself sends with a write
+
+test("private is the Worker's own default: no cookie, no key, nothing; a missing or misspelt BOARD_ACCESS is private too", async () => {
+  for (const BOARD_ACCESS of [undefined, "", "private", "Open", "everyone", "OPEN "]) {
+    const { sqlite, env } = database({ BOARD_ACCESS });
+    try {
+      assert.equal((await fetchAs(env, "/api/me")).status, 401, String(BOARD_ACCESS));
+      assert.equal((await fetchAs(env, "/api/cards")).status, 401);
+      assert.equal((await fetchAs(env, "/api/cards", "POST", pageHeaders, { title: "x" })).status, 401);
+      assert.equal(((await (await fetchAs(env, "/api/info")).json()) as { access: string }).access, "private");
+    } finally { sqlite.close(); }
+  }
+});
+
+test("view: anybody reads without signing in and is a visitor; only the owner and the agents write", async () => {
+  const { sqlite, env } = database({ BOARD_ACCESS: "view" });
+  try {
+    const me = await fetchAs(env, "/api/me");
+    assert.equal(me.status, 200);
+    assert.deepEqual(await me.json(), { actor: "viewer", name: "visitor" });
+    for (const path of ["/api/cards", "/api/cards/1", "/api/cards/1/comments", "/api/agents", "/api/version", "/api/projects", "/api/activity", "/api/chips"]) {
+      assert.equal((await fetchAs(env, path)).status, 200, path);
+    }
+    assert.equal(((await (await fetchAs(env, "/api/info")).json()) as { access: string }).access, "view");
+    // A visitor changes nothing, with or without the page's own headers.
+    for (const headers of [{}, pageHeaders]) {
+      assert.equal((await fetchAs(env, "/api/cards", "POST", headers, { title: "from a visitor" })).status, 401);
+      assert.equal((await fetchAs(env, "/api/cards/1", "PATCH", headers, { title: "changed" })).status, 401);
+      assert.equal((await fetchAs(env, "/api/cards/1", "DELETE", headers)).status, 401);
+      assert.equal((await fetchAs(env, "/api/cards/1/comments", "POST", headers, { body: "hi", to: LEAD })).status, 401);
+      assert.equal((await fetchAs(env, "/api/projects", "POST", headers, { name: "Another" })).status, 401);
+    }
+    assert.equal(sqlite.prepare("SELECT title FROM cards WHERE no = 1").get()?.title, "test");
+    assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM cards").get()?.n, 1);
+    // The owner (a sign-in link) and an agent (a key) still write.
+    const cookie = await ownerCookie(sqlite, env);
+    assert.equal((await fetchAs(env, "/api/me", "GET", { cookie })).status, 200);
+    assert.equal((await fetchAs(env, "/api/cards", "POST", { cookie, ...pageHeaders }, { title: "from the owner" })).status, 201);
+    assert.equal((await fetchAs(env, "/api/cards", "POST", { authorization: "Bearer " + keyOf(LEAD) }, { title: "from an agent" })).status, 201);
+    // A wrong key is a 401, not a visitor: a broken credential must show up.
+    assert.equal((await fetchAs(env, "/api/cards", "GET", { authorization: "Bearer " + "wrong-key-".repeat(5) })).status, 401);
+  } finally { sqlite.close(); }
+});
+
+test("open: nobody signs in; anybody is the owner, and a write still needs the page's own origin and header", async () => {
+  const { sqlite, env } = database({ BOARD_ACCESS: "open" });
+  try {
+    const me = await fetchAs(env, "/api/me");
+    assert.equal(me.status, 200);
+    assert.deepEqual(await me.json(), { actor: "owner", name: OWNER_ASSIGNEE.name });
+    assert.equal(((await (await fetchAs(env, "/api/info")).json()) as { access: string }).access, "open");
+    // Another site cannot make a browser change cards: without the page's own origin and header a write is refused.
+    assert.equal((await fetchAs(env, "/api/cards", "POST", {}, { title: "blind" })).status, 401);
+    assert.equal((await fetchAs(env, "/api/cards", "POST", { origin: "https://elsewhere.example.test", "x-board": "1" }, { title: "elsewhere" })).status, 401);
+    const made = await fetchAs(env, "/api/cards", "POST", pageHeaders, { title: "made on an open board" });
+    assert.equal(made.status, 201);
+    const no = ((await made.json()) as { no: number }).no;
+    assert.equal(sqlite.prepare("SELECT updated_by FROM cards WHERE no=?").get(no)?.updated_by, OWNER_ASSIGNEE.name);
+    // The owner's powers are open too, purging a card included.
+    assert.equal((await fetchAs(env, `/api/cards/${no}`, "DELETE", pageHeaders)).status, 200);
+    assert.equal((await fetchAs(env, `/api/cards/${no}?purge=1`, "DELETE", pageHeaders)).status, 200);
+    // A wrong key is still a 401; a right one is still an agent, not the owner.
+    assert.equal((await fetchAs(env, "/api/cards", "GET", { authorization: "Bearer " + "wrong-key-".repeat(5) })).status, 401);
+    const agent = await fetchAs(env, "/api/me", "GET", { authorization: "Bearer " + keyOf(LEAD) });
+    assert.deepEqual(await agent.json(), { actor: "agent", name: LEAD });
+  } finally { sqlite.close(); }
+});

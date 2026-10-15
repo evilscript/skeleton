@@ -59,6 +59,7 @@
     "d1Id": "",
     "d1Name": "acme-portal-board",
     "fileStorage": "d1",
+    "access": "open",
     "r2Bucket": "",
     "workerName": "acme-portal-board",
     "workersDevName": "acme-portal",

@@ -1,5 +1,5 @@
 import { AGENT_LIST, OWNER_ASSIGNEE } from "./agents.ts";
-import { actorName, actorOf, CLEAR_COOKIE, LINK_PATTERN, linkHash, sessionCookie, type Actor, type AuthEnv } from "./auth.ts";
+import { accessMode, actorName, actorOf, CLEAR_COOKIE, LINK_PATTERN, linkHash, sessionCookie, type Actor, type AuthEnv } from "./auth.ts";
 import { dropObjects, fileMode, fileStore, requireStore, type StorageEnv } from "./storage.ts";
 import { assigneeValue as assignee, commentFields, DEFAULT_PROJECT, imageExtension, InputError, keyFromName, MAX_PROJECTS, pageLanguage, priorityValue as priority, projectKey, projectName } from "./validation.ts";
 import { COMMENT_ERRORS } from "../public/board/comment-rules.js";
@@ -677,6 +677,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
       fileStorage: fileMode(env),
       maxFileBytes: store?.maxBytes ?? 0,
       language: pageLanguage(env.BOARD_LANGUAGE),
+      access: accessMode(env), // "open", "view" or "private": the page hides what a visitor cannot use
     });
   }
   if (path === "/api/session" && method === "POST") return signIn(request, env, url);

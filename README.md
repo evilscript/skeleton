@@ -42,9 +42,9 @@ flowchart LR
    ```
 2. Create a free Cloudflare account (https://dash.cloudflare.com/sign-up: an email address, no card, no domain). This is the one account you create yourself.
 3. Open the folder in your AI tool (Claude Code, Codex, ...) and say: **"Read START_HERE.md and set this project up."**
-4. Answer five questions (project, you, team size, checks, anything else). The agent proposes every other value, names included, in one summary table; your yes to it covers everything in it. It then writes `skeleton.config.json`, applies it, creates and links your private GitHub repository, and deploys the board to your own Cloudflare account. You only do one short thing yourself: click **Allow** on the Cloudflare login page that opens in your browser. There is no password to choose: when the board is ready your browser opens it, already signed in.
+4. Answer five questions (project, you, team size, checks, anything else). The agent proposes every other value, names included, in one summary table; your yes to it covers everything in it. It then writes `skeleton.config.json`, applies it, creates and links your private GitHub repository, and deploys the board to your own Cloudflare account. You only do one short thing yourself: click **Allow** on the Cloudflare login page that opens in your browser. There is no password to choose and nothing to sign in to: when the board is ready your browser opens it and you can use it at once. (The board starts **open**: anybody who has its address can read and change it, which is fine for a prototype or a demo. One setting, `board.access`, locks it down to `view` or `private` when you are ready.)
 
-Logins happen in your own browser. Agents are told never to ask for, store or print a credential, and the board has no password at all: you get in with a one-time sign-in link that your Lead agent makes for you whenever you need one (a new device, an expired cookie).
+Logins happen in your own browser. Agents are told never to ask for, store or print a credential, and the board has no password at all: it starts open, and if you lock it down you get in with a one-time sign-in link that your Lead agent makes for you whenever you need one.
 
 ## What is inside
 

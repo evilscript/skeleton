@@ -46,6 +46,7 @@ test('a config with problems is refused with every problem listed', () => {
 test('file storage and language answers are validated', () => {
   const c = example();
   c.board.fileStorage = 'dropbox';
+  c.board.access = 'everyone';
   c.languages.boardPages = 'not a code';
   c.languages.code = 5;
   let dir = setup(c);
@@ -53,6 +54,7 @@ test('file storage and language answers are validated', () => {
     const r = apply(dir, '--check');
     assert.equal(r.code, 2);
     assert.match(r.err, /board\.fileStorage must be one of none, d1, r2/);
+    assert.match(r.err, /board\.access must be one of open, view, private/);
     assert.match(r.err, /languages\.boardPages/);
     assert.match(r.err, /languages\.code must be text/);
   } finally { cleanup(dir); }
@@ -270,4 +272,19 @@ test('with the board switched off the board files are left alone', () => {
     assert.equal(readFileSync(join(dir, 'board', 'src', 'agents.ts'), 'utf8'), before);
     assert.ok(!existsSync(join(dir, 'board', 'wrangler.jsonc')));
   } finally { cleanup(dir); }
+});
+
+test('board access: the kit starts open, and view or private is one setting away', () => {
+  for (const [value, expected] of [[undefined, 'open'], ['open', 'open'], ['view', 'view'], ['private', 'private']]) {
+    const c = example();
+    if (value === undefined) delete c.board.access; else c.board.access = value;
+    const dir = setup(c);
+    try {
+      const r = apply(dir, '--board-only');
+      assert.equal(r.code, 0, r.err);
+      assert.match(readFileSync(join(dir, 'board', 'wrangler.jsonc'), 'utf8'), new RegExp(`"BOARD_ACCESS": "${expected}"`));
+      // The open mode says what it means (once, in the output); the other two stay quiet.
+      assert.equal(/board access is "open"/.test(r.out), expected === 'open');
+    } finally { cleanup(dir); }
+  }
 });

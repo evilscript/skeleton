@@ -22,6 +22,10 @@
     "FILE_STORAGE": "{{FILE_STORAGE}}",
     // The language of the pages: the pack public/i18n/<code>.json ("en", "zh-CN", ...).
     "BOARD_LANGUAGE": "{{BOARD_LANGUAGE}}",
+    // Who may use the page without signing in: "open" (anybody who has the address is the owner: the kit's simplest start),
+    // "view" (anybody reads, changing needs the sign-in link from `npm run owner-link`) or "private" (everything needs the link).
+    // Set board.access in skeleton.config.json and run `node tools/setup/apply.mjs --board-only`, then `npm run deploy`.
+    "BOARD_ACCESS": "{{BOARD_ACCESS}}",
     "ENVIRONMENT": "production",
   },
   "routes": [{ "pattern": "{{BOARD_HOST}}", "custom_domain": true }],

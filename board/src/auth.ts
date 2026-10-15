@@ -7,10 +7,11 @@ import { AGENT_NAMES, LIMITED_AGENTS, OWNER_ASSIGNEE } from "./agents.ts";
 // token in the database and opens the link in the owner's browser; the page sends the
 // token once (src/index.ts signIn) and it is used up.
 export { AGENT_NAMES };
-export type Actor = { kind: "owner"; name: string } | { kind: "agent"; name: string; limited?: boolean };
+export type Actor = { kind: "owner"; name: string } | { kind: "agent"; name: string; limited?: boolean } | { kind: "viewer"; name: string };
 
 export interface AuthEnv {
   SESSION_SECRET: string; // signs the owner's session cookie (a Worker secret)
+  BOARD_ACCESS?: string; // who may use the page without signing in: "open" (anybody is the owner), "view" (anybody reads) or "private" (nobody)
   AGENT_KEYS: string; // JSON: { "<agent name>": "<key>", ... }, one per agent in src/agents.ts
 }
 
@@ -84,14 +85,29 @@ function fromKey(env: AuthEnv, request: Request): Actor | null {
   return null;
 }
 
-// Cookie sessions also need the page's own header on writes, so another
+// Who may use the page without signing in (the Worker variable BOARD_ACCESS, board.access in skeleton.config.json):
+//   open     anybody who has the address is the owner: no sign-in at all (the kit's default: the simplest start; a prototype or a demo)
+//   view     anybody can READ the board; changing it needs the owner's sign-in link or an agent's key
+//   private  nobody: every request needs the owner's cookie (a sign-in link) or an agent's key
+// A missing or misspelt value is private: a typo must never open a board. The Worker's own default is private; the kit's
+// configuration (board.access) sets the variable, so a board made from the kit starts open and the team locks it down when it wants to.
+export type Access = "open" | "view" | "private";
+export function accessMode(env: AuthEnv): Access {
+  return env.BOARD_ACCESS === "open" || env.BOARD_ACCESS === "view" ? env.BOARD_ACCESS : "private";
+}
+export const VISITOR: Actor = { kind: "viewer", name: "visitor" };
+
+// Cookie sessions (and the open mode) also need the page's own origin and header on writes, so another
 // site can't make the owner's browser change cards (CSRF).
 export async function actorOf(env: AuthEnv, request: Request): Promise<Actor | null> {
-  const agent = fromKey(env, request);
-  if (agent) return agent;
-  const owner = await fromCookie(env, request);
-  if (!owner) return null;
-  if (request.method !== "GET" && request.method !== "HEAD") {
+  // A request that brings a key is an agent or nobody: a wrong key never falls back to a visitor or the open owner, so a broken
+  // credential shows up as a 401 instead of silently working with fewer rights.
+  if (/^Bearer\s/i.test(request.headers.get("authorization") || "")) return fromKey(env, request);
+  const mode = accessMode(env);
+  const owner = (await fromCookie(env, request)) ?? (mode === "open" ? ({ kind: "owner", name: OWNER_ASSIGNEE.name } as Actor) : null);
+  const read = request.method === "GET" || request.method === "HEAD";
+  if (!owner) return read && mode === "view" ? VISITOR : null;
+  if (!read) {
     const url = new URL(request.url);
     if (request.headers.get("origin") !== url.origin || request.headers.get("x-board") !== "1") return null;
   }

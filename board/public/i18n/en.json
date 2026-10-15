@@ -159,6 +159,8 @@
   "board.error.invalid_status": "Invalid status",
   "board.error.invalid_column": "Invalid column",
   "board.error.sign_in_locked": "Sign-in is switched off: the board has no session secret yet. The Lead sets it with npm run setup:secrets.",
+  "board.readonly.toast": "This board is read-only for you: ask your Lead agent for a sign-in link to change it.",
+  "board.readonly.who": "Read-only",
   "board.error.link_invalid": "That sign-in link was already used or has expired. Ask your Lead agent for a new one.",
   "board.error.files_disabled": "This board has no file storage",
   "status.backlog": "Backlog",

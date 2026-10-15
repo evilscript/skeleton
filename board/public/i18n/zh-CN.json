@@ -159,6 +159,8 @@
   "board.error.invalid_status": "状态无效",
   "board.error.invalid_column": "列无效",
   "board.error.sign_in_locked": "登录已关闭：看板还没有设置会话密钥。Lead 可以用 npm run setup:secrets 设置。",
+  "board.readonly.toast": "这个看板你只能看：想修改请向你的 Lead agent 要一条登录链接。",
+  "board.readonly.who": "只读",
   "board.error.link_invalid": "这条登录链接已经用过或已过期。请向你的 Lead agent 再要一条。",
   "board.error.files_disabled": "这个看板没有文件存储",
   "status.backlog": "待规划",

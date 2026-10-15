@@ -55,3 +55,18 @@ test("the content security policy is as strict as it can be: same-origin scripts
   assert.match(headers, /\/shared\/\*\n\s+Cache-Control: no-cache/);
   assert.match(headers, /\/i18n\/\*\n\s+Cache-Control: no-cache/);
 });
+
+test("the access modes reach the page: a visitor reads (nothing to edit, cards locked), an open board has no sign-out", () => {
+  const board = read("public/board/board.js");
+  const css = read("public/board/board.css");
+  assert.match(board, /document\.body\.classList\.toggle\("open", INFO\.access === "open"\)/);
+  assert.match(board, /document\.body\.classList\.toggle\("readonly", me\.actor === "viewer"\)/);
+  assert.match(board, /draggable: me\.actor === "viewer" \? "false" : "true"/);
+  assert.match(board, /me && me\.actor === "viewer" && method !== "GET"/); // a write is never sent for a visitor
+  assert.match(board, /if \(me\.actor === "viewer"\) for \(const x of \$\("card-form"\)/); // an open card is locked
+  assert.match(css, /body\.open #logout \{ display: none; \}/);
+  for (const id of ["new", "manage-chips", "projects-btn", "removed"]) assert.ok(css.includes(`body.readonly #${id}`), id);
+  for (const code of ["board.readonly.who", "board.readonly.toast"]) {
+    for (const lang of ["en", "zh-CN"]) assert.ok(read(`public/i18n/${lang}.json`).includes(`"${code}"`), `${lang} ${code}`);
+  }
+});

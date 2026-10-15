@@ -25,8 +25,11 @@ const SKIP_DIRS = new Set(['.git', 'node_modules', '.wrangler', '.skeleton']);
 // Files that describe the kit itself or hold the token names on purpose: never rewritten.
 const SKIP_FILES = new Set(['START_HERE.md', 'README.md', 'LICENSE', 'skeleton.config.json', 'skeleton.config.example.json']);
 const SKIP_PREFIXES = ['tools/setup/'];
-const BOARD_TOKENS = ['WORKER_NAME', 'CLOUDFLARE_ACCOUNT_ID', 'BOARD_HOST', 'D1_NAME', 'D1_ID', 'R2_BUCKET', 'FILE_STORAGE', 'BOARD_LANGUAGE'];
+const BOARD_TOKENS = ['WORKER_NAME', 'CLOUDFLARE_ACCOUNT_ID', 'BOARD_HOST', 'D1_NAME', 'D1_ID', 'R2_BUCKET', 'FILE_STORAGE', 'BOARD_LANGUAGE', 'BOARD_ACCESS'];
 const FILE_STORAGE_MODES = ['none', 'd1', 'r2'];
+// Who may use the board page without signing in (board/src/auth.ts accessMode): open (anybody is the owner; the kit's default, the
+// simplest start), view (anybody reads; changing needs the owner's sign-in link) or private (every request needs one).
+const ACCESS_MODES = ['open', 'view', 'private'];
 
 const out = (...a) => console.log(...a);
 const args = process.argv.slice(2);
@@ -90,6 +93,7 @@ function validate(c) {
     need(b.workersDevName === undefined || (typeof b.workersDevName === 'string' && /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(b.workersDevName)), 'board.workersDevName must be lowercase letters, digits and hyphens');
     if (b.fileStorage !== undefined) need(FILE_STORAGE_MODES.includes(b.fileStorage), `board.fileStorage must be one of ${FILE_STORAGE_MODES.join(', ')}`);
     need(fileStorageOf(b) !== 'r2' || str(b.r2Bucket), 'board.fileStorage "r2" needs board.r2Bucket (the bucket name)');
+    if (b.access !== undefined) need(ACCESS_MODES.includes(b.access), `board.access must be one of ${ACCESS_MODES.join(', ')}`);
   }
   const l = c.languages || {};
   for (const k of ['documents', 'code', 'commits', 'product']) need(l[k] === undefined || typeof l[k] === 'string', `languages.${k} must be text`);
@@ -113,6 +117,7 @@ const checks = config.checks || {};
 const languages = config.languages || {};
 const fileStorage = fileStorageOf(board);
 const boardLanguage = languages.boardPages || 'en';
+const boardAccess = board.access || 'open';
 const workersDevName = board.workersDevName || slug;
 const host = board.enabled ? new URL(board.url).host : '';
 const tokens = {
@@ -146,6 +151,7 @@ const boardTokens = {
   R2_BUCKET: board.r2Bucket || '',
   FILE_STORAGE: fileStorage,
   BOARD_LANGUAGE: boardLanguage,
+  BOARD_ACCESS: boardAccess,
   PROJECT_NAME: config.project.name,
 };
 
@@ -198,6 +204,7 @@ function boardFiles() {
     // Wrangler registers a free workers.dev name for a new account by itself when an AI agent runs the first deploy, and it takes the
     // name from the package name of the folder it runs in: so that package is named after the project, not "board".
     if (host.endsWith('.workers.dev')) setPackageName(workersDevName);
+    if (boardAccess === 'open') out('  note: board access is "open": anybody who has the board address can read and change it, nothing to sign in to. Set board.access to "view" (anybody reads, only the Owner changes) or "private" (sign-in link for everything) to lock it down.');
     if (fileStorage === 'none') out('  note: file storage is "none": card attachments and screenshots are switched off.');
     if (fileStorage === 'd1') out('  note: file storage is "d1": files are kept in the board database (small images only; no extra service).');
     if (!existsSync(join(ROOT, 'board', 'public', 'i18n', `${boardLanguage}.json`))) out(`  note: no language pack board/public/i18n/${boardLanguage}.json yet: copy en.json to it and translate the values (the pages fall back to English until then).`);

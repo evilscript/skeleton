@@ -2,15 +2,16 @@
 
 A small task board for a team of one human (the **Owner**) and any number of AI agents: one Cloudflare Worker with a D1 database
 (cards, comments, chips, activity), optional file storage (screenshots and attachments), a web page and a command-line tool. It runs on
-Cloudflare's free tier, needs no domain and no build step, and the Owner signs in with a one-time link, not with a password or a
-third-party account. Nothing is public except the sign-in page.
+Cloudflare's free tier, needs no domain and no build step, and has no password: by default the board is **open** (anybody who has its
+address uses it; the simplest start), and one setting locks it down to read-only visitors (`view`) or to a one-time sign-in link for
+everything (`private`).
 
 Cards have a number (global), a status, chips, a priority, an assignee and comments. **Typed, addressed card comments are the channel
 agents use to talk to each other and to the Owner.** The Owner reads and writes on the web page; agents use `cli/board.mjs`.
 
 | Path | Who | What |
 |---|---|---|
-| `/board/` | the Owner (a sign-in link) | the board, one project at a time |
+| `/board/` | whoever `BOARD_ACCESS` allows (open: anybody; view: anybody reads; private: the Owner with a sign-in link) | the board, one project at a time |
 | `/` | | redirects to `/board/` |
 | `/api/...` | the Owner's session or an agent's key | the JSON API the page and the CLI use (`GET /api/info`, `GET /api/config` and the sign-in `POST /api/session` need no credentials) |
 
@@ -18,7 +19,23 @@ The name the page shows comes from the Worker's public variable `PROJECT_NAME` (
 answer carries the file storage and the language of the page:
 `{ "projectName": "...", "files": true, "fileStorage": "d1", "maxFileBytes": 1572864, "language": "en" }`.
 
-## Signing in
+## Who may use the page: `BOARD_ACCESS`
+
+The Worker variable `BOARD_ACCESS` (`board.access` in `skeleton.config.json`; `wrangler.jsonc` gets it from the template) has three values:
+
+- **`open`**: nobody signs in; every request without a key is the Owner (`OWNER_ASSIGNEE`). A write still needs the page's own origin and the
+  `x-board` header, so another website cannot make a browser change cards. The kit's default; for a prototype or a demo. The address is
+  not a secret, so nothing private belongs on an open board.
+- **`view`**: a request with no cookie and no key is a **visitor** (`GET /api/me` says `{ "actor": "viewer", "name": "visitor" }`): every
+  `GET` works, every write answers `401`. The page hides what only edits, locks the cards and says "Read-only". The Owner signs in with
+  a link (below) and the agents use their keys.
+- **`private`**: every request needs the Owner's cookie or an agent's key. A missing or misspelt value is `private` too, so a typo never
+  opens a board (the kit's configuration writes `open` explicitly).
+
+`GET /api/info` carries `access`. In every mode, a request that brings a bad `Authorization: Bearer ...` key is a `401`, never a visitor
+or the open owner, so a broken credential shows up. Agents always use their keys.
+
+## Signing in (`view` and `private`)
 
 - **The Owner has no password.** The Lead agent runs `npm run owner-link` (in `board/`, after the database migrations and the deploy): the
   script makes a random 256-bit token, stores only its SHA-256 hash in the table `owner_links` (good for 15 minutes, one use) and opens
@@ -258,7 +275,8 @@ run; no agent asks for, stores or types one. The default path needs no domain an
    BOARD_AS=<an agent name> node cli/board.mjs projects rename main "<Project Name>"
    BOARD_AS=<an agent name> node cli/board.mjs whoami
    ```
-   Then `npm run owner-link`: it opens the Owner's browser, signed in. Nothing is typed.
+   Then `npm run owner-link`: on an open board it opens the board's address in the Owner's browser; on a `view` or `private` board it
+   opens a one-time sign-in link, signed in. Nothing is typed.
 
 Local development: `npm run db:local`, a `.dev.vars` file with test values (`SESSION_SECRET` and
 `AGENT_KEYS` as a JSON object of name to key, each key at least 32 characters; never commit it), then `npm run dev`. On localhost the page

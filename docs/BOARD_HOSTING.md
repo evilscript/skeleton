@@ -48,9 +48,19 @@ The token is made in the Cloudflare dashboard (My Profile, API Tokens, Create To
 
 Without the secret the workflow does nothing. The first deploy and the Worker's own secrets (`npm run setup:secrets`) are done once, by the agent on your machine: GitHub never sees the board's keys. A push that changes a database migration stops the workflow on purpose: back the database up first (`board/docs/MAINTENANCE.md`), then run the workflow by hand with "migrate" ticked.
 
-## Signing in
+## Who can open the board
 
-There is no password and no third-party login. The agent makes you a **one-time sign-in link** (`npm run owner-link` in `board/`) and your browser opens it: it signs you in for 30 days. The link works once and runs out after 15 minutes, and only its hash is stored, so it is harmless if anybody sees it afterwards. On another device, in another browser, or when the 30 days are over, tell your Lead agent "give me a sign-in link"; there is nothing to remember and nothing to reset. If your Lead runs on a different machine than the browser you use, it gives you the link in the chat (`npm run owner-link -- --print`): open it within 15 minutes. Agents never sign in to the page; each has its own key and uses the command line. Cards come only from you and the agents: the board has no public intake form.
+The board has no password. One setting, `board.access` in `skeleton.config.json` (the Worker variable `BOARD_ACCESS`), says who may use the page without signing in:
+
+| `board.access` | What it means | When |
+|---|---|---|
+| `open` (the default) | Nobody signs in. Anybody who has the board address reads **and changes** it, as the Owner. | The simplest start: a prototype, a demo, a team that trusts everybody who has the link. Do not keep anything private on it: the address is not a secret (`<name>-board.<name>.workers.dev`). |
+| `view` | Anybody reads the board without signing in (cards, comments, pictures); only the Owner (a sign-in link) and the agents (their keys) change it. The page shows visitors a read-only board. | Sharing a board with leaders or a client for looking, not for editing. |
+| `private` | Every request needs the Owner's sign-in link or an agent's key; strangers see a page that says to ask the Lead for a link. | Anything that should not be seen. |
+
+To change it: set `board.access`, run `node tools/setup/apply.mjs --board-only`, then `npm run deploy` in `board/` (and `npm run owner-link` for `view` or `private`). A missing or misspelt value on a Worker means `private`: a typo never opens a board. Agents always use their own keys on the command line, in every mode.
+
+**Sign-in links (`view` and `private`).** The agent makes the Owner a **one-time sign-in link** (`npm run owner-link` in `board/`) and the Owner's browser opens it: it signs the browser in for 30 days. The link works once and runs out after 15 minutes, and only its hash is stored, so it is harmless if anybody sees it afterwards. On another device, in another browser, or when the 30 days are over, the Owner tells the Lead agent "give me a sign-in link"; there is nothing to remember and nothing to reset. If the Lead runs on a different machine than the Owner's browser, it gives the link in the chat (`npm run owner-link -- --print`): the Owner opens it within 15 minutes. Cards come only from the Owner and the agents: the board has no public intake form.
 
 ## Why not GitHub Pages
 

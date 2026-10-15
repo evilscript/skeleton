@@ -74,7 +74,7 @@ test("r2: info says so, uploads are stored, served and deleted", async () => {
   const { sqlite, env } = database({ FILES: r2.store, FILE_STORAGE: "r2" });
   try {
     const info = await get(env, "/api/info");
-    assert.deepEqual(await info.json(), { projectName: "Board", files: true, fileStorage: "r2", maxFileBytes: MAX_ATTACHMENT, language: "en" });
+    assert.deepEqual(await info.json(), { projectName: "Board", files: true, fileStorage: "r2", maxFileBytes: MAX_ATTACHMENT, language: "en", access: "private" });
 
     const shot = await upload(env, 1, "screenshot", "shot.png", "image/png");
     assert.equal(shot.status, 201);
@@ -129,7 +129,7 @@ test("a Worker with the FILES binding and no FILE_STORAGE variable behaves as r2
   const off = bucket();
   const none = database({ FILES: off.store, FILE_STORAGE: "none" });
   try {
-    assert.deepEqual(await (await get(none.env, "/api/info")).json(), { projectName: "Board", files: false, fileStorage: "none", maxFileBytes: 0, language: "en" });
+    assert.deepEqual(await (await get(none.env, "/api/info")).json(), { projectName: "Board", files: false, fileStorage: "none", maxFileBytes: 0, language: "en", access: "private" });
     const res = await upload(none.env, 1, "screenshot", "shot.png", "image/png");
     assert.equal(res.status, 501);
     assert.deepEqual(await res.json(), { error: "files_disabled" });
@@ -143,7 +143,7 @@ test("none: info says no files, and the file endpoints answer 501 files_disabled
     sqlite.exec("INSERT INTO files(id,card_no,kind,name,type,size,created_at,created_by) VALUES ('f1',1,'screenshot','old.png','image/png',12,'2026-10-03T00:00:00Z','x')");
     const info = await get(env, "/api/info");
     assert.equal(info.status, 200);
-    assert.deepEqual(await info.json(), { projectName: "Board", files: false, fileStorage: "none", maxFileBytes: 0, language: "en" });
+    assert.deepEqual(await info.json(), { projectName: "Board", files: false, fileStorage: "none", maxFileBytes: 0, language: "en", access: "private" });
 
     for (const [res, what] of [
       [await upload(env, 1, "screenshot", "shot.png", "image/png"), "upload a screenshot"],
@@ -184,7 +184,7 @@ test("d1: info says so, a file round-trips through the database, delete and purg
   const { sqlite, env } = database({ FILES: undefined, FILE_STORAGE: "d1" });
   try {
     const info = await get(env, "/api/info");
-    assert.deepEqual(await info.json(), { projectName: "Board", files: true, fileStorage: "d1", maxFileBytes: D1_MAX_FILE, language: "en" });
+    assert.deepEqual(await info.json(), { projectName: "Board", files: true, fileStorage: "d1", maxFileBytes: D1_MAX_FILE, language: "en", access: "private" });
     assert.ok(D1_MAX_FILE < 2_000_000, "a row, the bytes included, must stay under D1's 2 MB limit");
 
     const shot = await upload(env, 1, "screenshot", "shot.png", "image/png", png(5000));

@@ -138,6 +138,8 @@ const errorText = (code) => (has("board.error." + code)
   : t("board.error.generic", { code }));
 
 async function call(method, path, data) {
+  // A visitor (access "view", not signed in) only reads: say so instead of sending a write that would be refused.
+  if (me && me.actor === "viewer" && method !== "GET") { toast(t("board.readonly.toast")); throw new Error("readonly"); }
   const opts = { method, headers: { "x-board": "1" } };
   if (data instanceof FormData) opts.body = data;
   else if (data !== undefined) { opts.body = JSON.stringify(data); opts.headers["content-type"] = "application/json"; }
@@ -170,10 +172,14 @@ async function start() {
     me = await res.json();
     await loadAgents();
     $("app").hidden = false;
-    $("who").textContent = AGENTS[me.name] || me.name;
+    // Access modes (GET /api/info "access", the Worker variable BOARD_ACCESS): "open" has nobody to sign in or out; "view" shows a visitor
+    // a read-only board (the editing controls are hidden by board.css, the cards cannot be dragged and a card opens locked).
+    document.body.classList.toggle("open", INFO.access === "open");
+    document.body.classList.toggle("readonly", me.actor === "viewer");
+    $("who").textContent = me.actor === "viewer" ? t("board.readonly.who") : AGENTS[me.name] || me.name;
     await loadProjects();
     await enterProject(pickProject());
-    if (!guideSeen()) openGuide();
+    if (me.actor !== "viewer" && !guideSeen()) openGuide();
     setInterval(async () => {
       if (document.visibilityState !== "visible" || dragging) return;
       try { await checkForChanges(); } catch {}
@@ -484,7 +490,7 @@ function cardEl(c) {
     el("button", { type: "button", class: "btn small", title: t("board.card.edit_title"), onclick: (ev) => { ev.stopPropagation(); openCard(c.no); } }, t("board.card.edit")),
     confirmButton(t("board.card.remove"), t("board.card.remove_sure"), () => removeCard(c.no)));
   tools.addEventListener("click", (ev) => ev.stopPropagation());
-  const e = el("article", { class: "card", draggable: "true", "data-no": c.no, "data-prio": c.priority, onclick: () => openCard(c.no) },
+  const e = el("article", { class: "card", draggable: me.actor === "viewer" ? "false" : "true", "data-no": c.no, "data-prio": c.priority, onclick: () => openCard(c.no) },
     // The status chip sits at the card's top right; the number and title run on beside it and under it.
     el("div", { class: "head" }, statusEl(c.status), tools, el("span", { class: "no" }, "#" + c.no), el("span", { class: "title" }, c.title)),
     FILES && c.thumb && el("img", { class: "thumb", src: `/api/files/${c.thumb}`, alt: "", loading: "lazy" }),
@@ -673,6 +679,8 @@ async function openCard(no) {
           me.actor === "owner" && confirmButton(t("board.removed.delete"), t("board.removed.delete_sure"), async () => { await call("DELETE", `/api/cards/${no}?purge=1`); $("card-dlg").close(); reload(); }))
       : el("div", { class: "actions" }, confirmButton(t("board.card.remove_this"), t("board.card.remove_this_sure"), () => removeCard(no))),
   );
+  // A visitor reads: every field, select and button of the card is switched off except Close (the pictures still zoom).
+  if (me.actor === "viewer") for (const x of $("card-form").querySelectorAll("input, select, textarea, button")) if (x.value !== "close") x.disabled = true;
   if (!$("card-dlg").open) $("card-dlg").showModal();
 }
 $("card-dlg").addEventListener("close", () => { openNo = null; openThread = null; });

@@ -281,3 +281,8 @@ textarea.field { width: 100%; min-height: 180px; resize: vertical; line-height: 
   .grid { grid-template-columns: 1fr; }
   .grid > label { padding-top: 0; }
 }
+
+/* Access modes (board.js start()): "open" has no sign-out; a visitor ("view") reads, so what only edits is hidden. */
+body.open #logout { display: none; }
+body.readonly #new, body.readonly #manage-chips, body.readonly #projects-btn, body.readonly #removed, body.readonly #logout { display: none; }
+body.readonly .card .tools { display: none; }

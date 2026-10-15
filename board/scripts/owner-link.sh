@@ -1,6 +1,8 @@
 #!/bin/bash
 # Makes the Owner's sign-in link and opens it in the Owner's browser. There is no board password:
 # the link is how the Owner gets in, on the first day and on every new device or browser after.
+# On an OPEN board (board.access "open" in skeleton.config.json, the kit's default) nobody signs in, so there is no
+# link to make: the script just opens the board's address.
 #
 # What it does: makes a random 256-bit token, stores only its SHA-256 hash in the board's database
 # (table owner_links, good for 15 minutes, one use), and opens
@@ -35,6 +37,18 @@ case "$url" in
   ""|*setup-pending*) echo "The board has no address yet. Deploy it first (npm run deploy), then store the address with node tools/setup/apply.mjs --set-board-url <address>." >&2; exit 1 ;;
 esac
 url=${url%/}
+
+access=$(node -e 'try{const c=JSON.parse(require("fs").readFileSync("../skeleton.config.json","utf8"));process.stdout.write((c.board&&c.board.access)||"open")}catch{process.stdout.write("open")}')
+if [ "$access" = "open" ] && [ "$local_db" = 0 ]; then
+  page="$url/board/"
+  if [ "$print" = 1 ]; then printf '%s\n' "$page"; exit 0; fi
+  if command -v open >/dev/null 2>&1; then open "$page"
+  elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$page" >/dev/null 2>&1
+  elif command -v cmd.exe >/dev/null 2>&1; then cmd.exe /c start "" "$page" >/dev/null 2>&1
+  else printf '%s\n' "$page"; fi
+  echo 'This board is open (board.access = "open"): nobody has to sign in, the address is the board. For a sign-in link, set board.access to "view" or "private".' >&2
+  exit 0
+fi
 
 token=$(node -p 'require("crypto").randomBytes(32).toString("base64url")')
 hash=$(printf '%s' "$token" | node -e 'let s="";process.stdin.on("data",(d)=>(s+=d)).on("end",()=>process.stdout.write(require("crypto").createHash("sha256").update(s).digest("hex")))')

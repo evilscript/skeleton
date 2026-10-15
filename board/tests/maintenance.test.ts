@@ -330,9 +330,9 @@ test("GET /api/info is public and gives the project name, the file storage and t
     const ask = (e: typeof env) => worker.fetch(new Request("http://localhost/api/info"), e);
     const plain = await ask(env);
     assert.equal(plain.status, 200);
-    assert.deepEqual(await plain.json(), { projectName: "Board", files: true, fileStorage: "r2", maxFileBytes: 25 * 1024 * 1024, language: "en" });
+    assert.deepEqual(await plain.json(), { projectName: "Board", files: true, fileStorage: "r2", maxFileBytes: 25 * 1024 * 1024, language: "en", access: "private" });
     const named = await ask({ ...env, PROJECT_NAME: "Example Project", BOARD_LANGUAGE: "zh-CN" });
-    assert.deepEqual(await named.json(), { projectName: "Example Project", files: true, fileStorage: "r2", maxFileBytes: 25 * 1024 * 1024, language: "zh-CN" });
+    assert.deepEqual(await named.json(), { projectName: "Example Project", files: true, fileStorage: "r2", maxFileBytes: 25 * 1024 * 1024, language: "zh-CN", access: "private" });
     // A language that is not a code (a path, a script) is English.
     for (const bad of ["", "../x", "en/../../x", "<b>", "english language", "e"]) {
       assert.equal(((await (await ask({ ...env, BOARD_LANGUAGE: bad })).json()) as { language: string }).language, "en", bad);
